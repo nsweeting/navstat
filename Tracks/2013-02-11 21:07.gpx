@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<gpx>
+	<trk>
+		<name>NAVSTAT TRACK</name>
+		<trkseg>
+			<trkpt lat="44.496034535" lon="-80.046580911">
+				<ele>0</ele>
+				<time>2013-02-12T02:08:03.000Z</time>
+			</trkpt>
+		</trkseg>
+	</trk>
+</gpx>
