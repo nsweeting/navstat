@@ -48,6 +48,7 @@ class navstat():
 		self.rte_loc        = ''
 		self.lat_lon        = ['','']
 		self.gpx_trk        = None
+		self.unt_msr        =[0,0]
 
 
 	def start(self):
@@ -102,6 +103,14 @@ class navstat():
 					elif set_itm[0] == 'track_save': self.trk_sve = int(set_itm[1])
 					elif set_itm[0] == 'track_location': self.trk_loc = str(set_itm[1])
 					elif set_itm[0] == 'route_location': self.rte_loc = str(set_itm[1])
+					elif set_itm[0] == 'unit_distance':
+						if str(set_itm[1]) == 'KM': self.unt_msr[0] = 0
+						elif str(set_itm[1]) == 'MI': self.unt_msr[0] = 1
+						elif str(set_itm[1]) == 'NM': self.unt_msr[0] = 2
+					elif set_itm[0] == 'unit_speed':
+						if str(set_itm[1]) == 'KPH': self.unt_msr[1] = 0
+						elif str(set_itm[1]) == 'MPH': self.unt_msr[1] = 1
+						elif str(set_itm[1]) == 'NMPH': self.unt_msr[1] = 2
 		settings.close()
 
 
@@ -179,48 +188,46 @@ class navstat():
 		lon_1 = self.lat_lon[1]
 		lat_2 = 55.263521
 		lon_2 = 128.212321
-		
+
 		lon_1, lat_1, lon_2, lat_2 = map(math.radians, [lon_1, lat_1, lon_2, lat_2])
 		dst_lon = lon_2 - lon_1
 		dst_lat = lat_2 - lat_1
 		a = math.sin(dst_lat/2)**2 + math.cos(lat_1) * math.cos(lat_2) * math.sin(dst_lon/2)**2
 		c = 2 * math.asin(math.sqrt(a))
 		dis_out = radius * c
+		dis_out = self.unit_convert(0,dis_out)
 		y = math.sin(dst_lon) * math.cos(lat_2)
 		x = math.cos(lat_1) * math.sin(lat_2) - math.sin(lat_1) * math.cos(lat_2) * math.cos(dst_lon)
 		brg_out = math.degrees(math.atan2(y, x))
 		brg_out = (brg_out + 360) % 360
 		self.des_brg = round(brg_out)
-		
+
 		if dis_out >= 0 and dis_out < 10: ext1 = 40
 		elif dis_out >= 10 and dis_out < 100: ext1 = 34
 		elif dis_out >= 100 and dis_out < 1000: ext1 = 24
 		elif dis_out >= 1000 and dis_out < 10000: ext1 = 14
 		elif dis_out >= 10000 and dis_out < 100000: ext1 = 0
-		
+
 		if brg_out < 10: ext2 = 14
 		elif brg_out >= 10 and brg_out < 100: ext2 = 7
 		elif brg_out > 100: ext2 = 0
-		
+
 		self.txt_out((self.font_3.render('DST', True, self.clr_2)),355,0)
 		self.txt_out((self.font_4.render(str(round(dis_out,2)), True, self.clr_2)),298 + ext1,30)
 		self.txt_out((self.font_4.render(str(round(brg_out)).replace('.0','') + self.degree, True, self.clr_2)),344 + ext2,75)		
 
 
 	def speedometer(self):
-		if math.isnan(self.gpsd.fix.speed): 
-			spd_cur = 0
-			spd_out = 'O.O'
-		else: 
-			spd_cur = self.gpsd.fix.speed
-			spd_out = str(round(spd_cur,1))
-		spd_mtr = (spd_cur*220)/self.spd_top
+		spd_out = self.gpsd.fix.speed
+		if math.isnan(spd_out): spd_out = 0.0
+		else: spd_out = round(self.unit_convert(1,spd_out),1)
+		spd_mtr = (spd_out*220)/self.spd_top
 		if spd_mtr > 220: spd_mtr = 220
-		
+
 		pygame.draw.rect(self.screen, self.clr_2, (15,210,220,60), 1)
 		pygame.draw.rect(self.screen, self.clr_2, (15,210,spd_mtr,60))
 		self.txt_out((self.font_3.render('SOG', True, self.clr_2)),107,128) 			#SOG text
-		self.txt_out((self.font_4.render(spd_out, True, self.clr_2)),100,158) 			#Speed
+		self.txt_out((self.font_4.render(str(spd_out), True, self.clr_2)),100,158) 			#Speed
 		self.txt_out((self.font_1.render(str(self.spd_top), True, self.clr_2)),220,273) 	#Top speed
 		self.txt_out((self.font_1.render(str(self.spd_top/2), True, self.clr_2)),116,273) 	#Mid speed
 		self.txt_out((self.font_1.render('0', True, self.clr_2)),15,273) 			#0 speed
@@ -316,6 +323,17 @@ class navstat():
 
 	def txt_out(self,text, h, v):
 		self.screen.blit(text, [h,v])
+
+
+	def unit_convert(self,type,num):
+		if type == 0:
+			if self.unt_msr[0] == 0: return num
+			elif self.unt_msr[0] == 1: return num*0.621371
+			elif self.unt_msr[0] == 2: return num*0.539957
+		elif type == 1:
+			if self.unt_msr[1] == 0: return num*1.852
+			elif self.unt_msr[1] == 1: return num*1.15078
+			elif self.unt_msr[1] == 2: return num
 
 
 class gpx():
