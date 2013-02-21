@@ -1,9 +1,10 @@
 import pygame
 import math
 import thread
-from gps import *
-from sys import exit
-from time import sleep
+import NMEA
+import GPX
+import sys
+import time
 from datetime import datetime
 
 
@@ -36,43 +37,36 @@ class navstat():
 		self.screen         = None
 		self.clock          = pygame.time.Clock()
 		self.cps_add        = 0
-		self.cps_len        = 108
-		self.cps_h          = 268
-		self.cps_v          = 210
+		self.cps_nfo        = [108,268,210] #length,height,vertical
 		self.des_brg        = 0.1
 		self.int_pnt        = [[0,22,500,22],[0,150,500,150],[0,300,500,300],[250,150,250,300],[250,0,250,150]] 
 		self.trk_rte        = []
-		self.trk_sec        = 10
-		self.trk_sve        = 6
-		self.trk_loc        = ''
-		self.rte_loc        = ''
+		self.trk_nfo        = [10,6]
+		self.gpx_loc        = ['','']
 		self.lat_lon        = ['','']
 		self.gpx_trk        = None
-		self.unt_msr        =[0,0]
+		self.unt_msr        = [0,0]
 
 
 	def start(self):
 		pygame.display.set_caption("NAVSTAT")
-		self.cps_len = self.cps_len + 1
+		self.cps_nfo[0] = self.cps_nfo[0] + 1
 		self.settings()
 		self.mini_mode()
 		self.night_mode()
 		self.track_mode()
 		while self.done == False:
-			self.gpsd.next()
 			self.keyevents()
 			self.interface()
-			self.latlong(self.gpsd.fix.latitude, self.gpsd.fix.longitude)
-			self.speedometer()
-			self.compass()
+			self.latlong(self.gps.lat, self.gps.lon)
+			self.speedometer(self.gps.spd)
+			self.compass(self.gps.trk)
+			self.local_time()
 			self.destination()
 			self.clock.tick(self.frame_rate)
 			pygame.display.flip()
-		if self.gpx_trk != None: 
-			if self.trk_rte: self.trk_mke()
-			self.gpx_trk.trk_close()
-		pygame.quit()
-		sys.exit()
+		self.quit()
+
 
 
 	def settings(self):
@@ -98,11 +92,11 @@ class navstat():
 					elif set_itm[0] == 'mini_mode':
 						if str(set_itm[1]) == 'OFF': self.mini = True
 						else: self.mini = False
-					elif set_itm[0] == 'track_secs': self.trk_sec = int(set_itm[1])
-					elif set_itm[0] == 'track_secs': self.trk_sec = int(set_itm[1])
-					elif set_itm[0] == 'track_save': self.trk_sve = int(set_itm[1])
-					elif set_itm[0] == 'track_location': self.trk_loc = str(set_itm[1])
-					elif set_itm[0] == 'route_location': self.rte_loc = str(set_itm[1])
+					elif set_itm[0] == 'track_secs': self.trk_nfo[0] = int(set_itm[1])
+					elif set_itm[0] == 'track_secs': self.trk_nfo[0] = int(set_itm[1])
+					elif set_itm[0] == 'track_save': self.trk_nfo[1] = int(set_itm[1])
+					elif set_itm[0] == 'track_location': self.gpx_loc[0] = str(set_itm[1])
+					elif set_itm[0] == 'route_location': self.gpx_loc[1] = str(set_itm[1])
 					elif set_itm[0] == 'unit_distance':
 						if str(set_itm[1]) == 'KM': self.unt_msr[0] = 0
 						elif str(set_itm[1]) == 'MI': self.unt_msr[0] = 1
@@ -119,8 +113,9 @@ class navstat():
 		conn = False
 		print 'Attempting to connect to GPS...'
 		while conn == False:
-			try:	
-				self.gpsd = gps(mode=WATCH_ENABLE)
+			try:
+				self.gps = NMEA.NMEA0183('/dev/ttyUSB0', 4800, 5,'GPS')
+				self.gps.read()
 				conn = True
 			except:
 				if x == 5:
@@ -133,7 +128,6 @@ class navstat():
 	def interface(self):
 		self.screen.fill(self.clr_1)
 		for point in self.int_pnt: pygame.draw.lines(self.screen, self.clr_2, False, [(point[0],point[1]),(point[2],point[3])], 2)
-		self.txt_out((self.font_2.render(datetime.now().strftime('%Y-%m-%d %H:%M'), True, self.clr_2)),173,308)
 		if self.track == True: self.txt_out(self.font_1.render('Tracking', True, self.clr_2),445,312)
 
 
@@ -147,25 +141,23 @@ class navstat():
 
 
 	def latlong(self,lat,lon):
-		if lat != None and lat != '':
-			if lat < 0: dec = 1
-			else: dec = 0
-			if lat < 10 and lat >= 0: lat_out = str(lat)[0:7 + dec]
-			elif lat > -10 and lat < 0: lat_out = str(lat)[0:7 + dec]
-			else: lat_out = str(lat)[0:8 + dec]
-			if lat_out[0:1] == '-': lat_out = lat_out[1:] + ' S'
-			else: lat_out = lat_out + ' N'
+		if lat < 0: dec = 1
+		else: dec = 0
+		if lat < 10 and lat >= 0: lat_out = str(lat)[0:7 + dec]
+		elif lat > -10 and lat < 0: lat_out = str(lat)[0:7 + dec]
+		else: lat_out = str(lat)[0:8 + dec]
+		if lat_out[0:1] == '-': lat_out = lat_out[1:] + ' S'
+		else: lat_out = lat_out + ' N'
 
-		if lon != None and lon != '':
-			if lon < 0: dec = 1
-			else: dec = 0
-			if lon < 10 and lon >= 0: lon_out = str(lon)[0:7 + dec]
-			elif lon > -10 and lon < 0: lon_out = str(lon)[0:7 + dec]
-			elif lon >= 100: lon_out = str(lon)[0:9 + dec]
-			elif lon <= -100: lon_out = str(lon)[0:9 + dec]
-			else: lon_out = str(lon)[0:8 + dec]
-			if lon_out[0:1] == '-': lon_out = lon_out[1:] + ' W'
-			else: lon_out = lon_out + ' E'
+		if lon < 0: dec = 1
+		else: dec = 0
+		if lon < 10 and lon >= 0: lon_out = str(lon)[0:7 + dec]
+		elif lon > -10 and lon < 0: lon_out = str(lon)[0:7 + dec]
+		elif lon >= 100: lon_out = str(lon)[0:9 + dec]
+		elif lon <= -100: lon_out = str(lon)[0:9 + dec]
+		else: lon_out = str(lon)[0:8 + dec]
+		if lon_out[0:1] == '-': lon_out = lon_out[1:] + ' W'
+		else: lon_out = lon_out + ' E'
 
 		self.lat_lon = [lat, lon]
 		l_len = len(lat_out)
@@ -217,10 +209,8 @@ class navstat():
 		self.txt_out((self.font_4.render(str(round(brg_out)).replace('.0','') + self.degree, True, self.clr_2)),344 + ext2,75)		
 
 
-	def speedometer(self):
-		spd_out = self.gpsd.fix.speed
-		if math.isnan(spd_out): spd_out = 0.0
-		else: spd_out = round(self.unit_convert(1,spd_out),1)
+	def speedometer(self, spd_out):
+		spd_out = round(self.unit_convert(1,spd_out),1)
 		spd_mtr = (spd_out*220)/self.spd_top
 		if spd_mtr > 220: spd_mtr = 220
 
@@ -233,18 +223,18 @@ class navstat():
 		self.txt_out((self.font_1.render('0', True, self.clr_2)),15,273) 			#0 speed
 
 
-	def compass(self):
-		if self.gpsd.fix.track != None and self.gpsd.fix.track != '': cps_out = round(self.gpsd.fix.track)    
+	def compass(self, cps_out):
+		cps_out = round(self.gps.trk)    
 		self.cps_add = 0
-		self.cps_h = 268
-		self.cps_v = 210
-		cps_port = round(self.gpsd.fix.track) - (self.cps_len/2)
+		self.cps_nfo[1] = 268
+		self.cps_nfo[2] = 210
+		cps_port = round(self.gps.trk) - (self.cps_nfo[0]/2)
 		if cps_port < 0: cps_port = 360 + cps_port
 		x = 0
 
-		while x < self.cps_len:
+		while x < self.cps_nfo[0]:
 			if cps_port > 359: cps_port = -1
-			self.cps_h = self.cps_h + 2
+			self.cps_nfo[1] = self.cps_nfo[1] + 2
 			cps_port = cps_port + 1
 			x = x + 1
 			if cps_port == 0: self.cps_mark('N',3)
@@ -255,8 +245,8 @@ class navstat():
 			elif cps_port == 225: self.cps_mark('SW',8)
 			elif cps_port == 270: self.cps_mark('W',3)
 			elif cps_port == 315: self.cps_mark('NW',8)
-			elif cps_port == self.des_brg: pygame.draw.polygon(self.screen, self.clr_2, [(self.cps_h - 10,self.cps_v), (self.cps_h + 10,self.cps_v), (self.cps_h,self.cps_v + 20)])
-			pygame.draw.lines(self.screen, self.clr_2, False, [(self.cps_h,self.cps_v), (self.cps_h,self.cps_v + 10  + self.cps_add)], 1)
+			elif cps_port == self.des_brg: pygame.draw.polygon(self.screen, self.clr_2, [(self.cps_nfo[1] - 10,self.cps_nfo[2]), (self.cps_nfo[1] + 10,self.cps_nfo[2]), (self.cps_nfo[1],self.cps_nfo[2] + 20)])
+			pygame.draw.lines(self.screen, self.clr_2, False, [(self.cps_nfo[1],self.cps_nfo[2]), (self.cps_nfo[1],self.cps_nfo[2] + 10  + self.cps_add)], 1)
 			self.cps_add = 0
 
 		if cps_out < 10: ext = 14
@@ -267,18 +257,22 @@ class navstat():
 		self.txt_out((self.font_4.render(str(cps_out).replace('.0','') + self.degree, True, self.clr_2)),344 + ext,158)		
 
 
+	def local_time(self):
+		self.txt_out((self.font_2.render(datetime.now().strftime('%Y-%m-%d %H:%M'), True, self.clr_2)),173,308)
+
+
 	def cps_mark(self,direction,sub):
 		self.cps_add = 10
-		self.txt_out((self.font_1.render(direction, True, self.clr_2)),self.cps_h - sub,self.cps_v + 30)
+		self.txt_out((self.font_1.render(direction, True, self.clr_2)),self.cps_nfo[1] - sub,self.cps_nfo[2] + 30)
 
 
 	def tracking(self):
 		x = 0
 		while self.track == True:
-			time.sleep(self.trk_sec)
-			self.trk_rte.append(self.lat_lon)
+			time.sleep(self.trk_nfo[0])
+			self.trk_rte.append([self.lat_lon,self.gps.utc])
 			x = x + 1
-			if x > self.trk_sve:
+			if x > self.trk_nfo[1]:
 				self.trk_mke()
 				self.trk_rte = []
 				x = 0
@@ -289,7 +283,7 @@ class navstat():
 
 
 	def trk_mke(self):
-		for point in self.trk_rte: self.gpx_trk.trkpt(point[0], point[1], 0, self.gpsd.utc)
+		for point in self.trk_rte: self.gpx_trk.trkpt(point[0][0], point[0][1], 0, point[1])
 
 
 	def night_mode(self):
@@ -306,7 +300,7 @@ class navstat():
 	def track_mode(self):
 		if self.track == False:
 			self.track = True
-			self.gpx_trk = gpx(self.trk_loc)
+			self.gpx_trk = GPX.GPX(self.gpx_loc[0])
 			self.gpx_trk.trk_start()
 			thread.start_new_thread(self.tracking, ())
 		else: self.track = False
@@ -336,62 +330,21 @@ class navstat():
 			elif self.unt_msr[1] == 2: return num
 
 
-class gpx():
-
-
-	def __init__(self,loc):
-		self.gpx_doc = ''
-		self.gpx_loc = loc
-		self.gpx_rte = []
-		self.rte_pos = -1
-
-	def trk_start(self):
-		gpx_fle = str(datetime.now().strftime('%Y-%m-%d %H:%M')) + '.gpx'
-		gpx_out = '<?xml version="1.0" encoding="UTF-8" standalone="no" ?>\n<gpx>\n\t<trk>\n\t\t<name>NAVSTAT TRACK</name>\n\t\t<trkseg>\n'
-		self.gpx_doc = open(self.gpx_loc + gpx_fle, 'a')
-		self.gpx_doc.write(gpx_out)
-
-
-	def trkpt(self,lat,lon,ele,tme):
-		gpx_out = '\t\t\t<trkpt lat="' + str(lat) + '" lon="' + str(lon) + '">\n' + '\t\t\t\t<ele>' + str(ele) + '</ele>\n' + '\t\t\t\t<time>' + str(tme) + '</time>\n\t\t\t</trkpt>\n'
-		self.gpx_doc.write(gpx_out)
-
-
-	def trk_close(self):
-		gpx_out = '\t\t</trkseg>\n\t</trk>\n</gpx>'
-		self.gpx_doc.write(gpx_out)
-		self.gpx_doc.close()
-
-
-	def rte_start(self,gpx_fle):
-		lat_lon = [0,0,'']
-		self.gpx_doc = open(self.gpx_loc + gpx_fle, 'r')
-		con = 0
-		for line in self.gpx_doc:
-			if line.find('<rtept') != -1:
-				start = line.find('lat=')
-				end = line.find('lon=')
-				lat_lon[0] = line[start + 5:end - 2]
-				start = line.find('lon=')
-				end = line.find('">')
-				lat_lon[1] = line[start + 5:end]
-				con = 1
-			if line.find('<name>') != -1 and con == 1:
-				start = line.find('<name>')
-				end = line.find('</name>')
-				lat_lon[2] = line[start + 6:end]
-				self.gpx_rte.append(lat_lon)
-				lat_lon = [0,0,'']
-				con = 0
-
-
-	def rte_get(self):
-		self.rte_pos = self.rte_pos + 1
-		return self.gpx_rte[self.rte_pos]
+	def quit(self):
+		self.screen.fill(self.clr_1)
+		self.txt_out((self.font_3.render('Exiting cleanly...', True, self.clr_2)),355,128)
+		pygame.display.flip()
+		self.gps.quit()
+		if self.gpx_trk != None: 
+			if self.trk_rte: self.trk_mke()
+			self.gpx_trk.trk_close()
+		time.sleep(2)
+		pygame.quit()
+		sys.exit()
 
 
 gps = navstat()
 gps.start()
-
-
+#test = NMEA.NMEA0183('/dev/ttyUSB0', 4800, 5,'gps')
+#test.read_serial()
 
