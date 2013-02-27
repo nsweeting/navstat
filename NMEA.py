@@ -13,8 +13,8 @@ class NMEA0183():
 		if type == 'GPS':
 			self.lat = float(0.0)
 			self.lon = float(0.0)
-			self.spd = float(0.0)
-			self.trk = float(0.0)
+			self.speed = float(0.0)
+			self.track = float(0.0)
 			self.utc = '0.0'
 
 
@@ -58,8 +58,8 @@ class NMEA0183():
 			self.utc = self.gps_nmea2utc()
 			self.lat = self.gps_nmea2dec(0)
 			self.lon = self.gps_nmea2dec(1)
-			self.spd = float(self.ser_dat[7])
-			self.trk = float(self.ser_dat[8])
+			self.speed = float(self.ser_dat[7])
+			self.track = float(self.ser_dat[8])
 
 
 	def gps_nmea2dec(self,type):

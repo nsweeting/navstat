@@ -1,36 +1,40 @@
+import sys
 from datetime import datetime
 
 
 class GPX():
 
-
 	def __init__(self,location):
 		self.gpx_doc = ''
-		self.gpx_loc = location
-		self.gpx_rte = []
-		self.rte_pos = -1
+		self.gpx_route = []
+		self.gpx_location = location
+		self.route_position = -1
+		self.track_size = 0
 
-	def trk_start(self):
-		gpx_fle = str(datetime.now().strftime('%Y-%m-%d %H:%M')) + '.gpx'
-		gpx_out = '<?xml version="1.0" encoding="UTF-8" standalone="no" ?>\n<gpx>\n\t<trk>\n\t\t<name>NAVSTAT TRACK</name>\n\t\t<trkseg>\n'
-		self.gpx_doc = open(self.gpx_loc + gpx_fle, 'a')
-		self.gpx_doc.write(gpx_out)
+	def track_start(self):
+		self.gpx_file = str(datetime.now().strftime('%Y-%m-%d %H:%M')) + '.gpx'
+		out = '<?xml version="1.0" encoding="UTF-8" standalone="no" ?>\n<gpx>\n\t<trk>\n\t\t<name>NAVSTAT TRACK</name>\n\t\t<trkseg>\n'
+		self.gpx_doc = open(self.gpx_location + self.gpx_file, 'a')
+		self.track_out(out)
 
+	def track_point(self,lat,lon,ele,tme):
+		out = '\t\t\t<trkpt lat="' + str(lat) + '" lon="' + str(lon) + '">\n' + '\t\t\t\t<ele>' + str(ele) + '</ele>\n' + '\t\t\t\t<time>' + str(tme) + '</time>\n\t\t\t</trkpt>\n'
+		self.track_out(out)
 
-	def trkpt(self,lat,lon,ele,tme):
-		gpx_out = '\t\t\t<trkpt lat="' + str(lat) + '" lon="' + str(lon) + '">\n' + '\t\t\t\t<ele>' + str(ele) + '</ele>\n' + '\t\t\t\t<time>' + str(tme) + '</time>\n\t\t\t</trkpt>\n'
-		self.gpx_doc.write(gpx_out)
+	def track_out(self, out):
+		self.gpx_doc.write(out)
+		self.track_size = self.track_size + sys.getsizeof(out)
+		print self.track_size
 
-
-	def trk_close(self):
-		gpx_out = '\t\t</trkseg>\n\t</trk>\n</gpx>'
-		self.gpx_doc.write(gpx_out)
+	def track_close(self):
+		out = '\t\t</trkseg>\n\t</trk>\n</gpx>'
+		self.track_out(out)
 		self.gpx_doc.close()
 
 
 	def rte_start(self,gpx_fle):
 		lat_lon = [0,0,'']
-		self.gpx_doc = open(self.gpx_loc + gpx_fle, 'r')
+		self.gpx_doc = open(self.gpx_location + gpx_fle, 'r')
 		con = 0
 		for line in self.gpx_doc:
 			if line.find('<rtept') != -1:
@@ -45,11 +49,14 @@ class GPX():
 				start = line.find('<name>')
 				end = line.find('</name>')
 				lat_lon[2] = line[start + 6:end]
-				self.gpx_rte.append(lat_lon)
+				self.gpx_route.append(lat_lon)
 				lat_lon = [0,0,'']
 				con = 0
 
 
 	def rte_get(self):
-		self.rte_pos = self.rte_pos + 1
-		return self.gpx_rte[self.rte_pos]
+		self.route_position = self.route_position + 1
+		return self.gpx_route[self.route_position]
+
+
+
