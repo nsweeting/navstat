@@ -4,28 +4,24 @@ NAVSTAT
 ABOUT
 -----
 NAVSTAT is being constructed as a simple yet effective navigation station for marine applications.
-It is important to realize that it is not being made to replace a full chartplotter, but rather  
+It is important to realize that it is not being made to replace a full chartplotter, but rather 
 provides a set of tools that will enable easy access and visualization of important navigational 
-information. This project is still in its infancy and as such, has a limited feature set at the 
-moment.
+information. Full NMEA0183 sentence/device compatibility is one of the goals.This project is still
+in its infancy and as such, has a limited feature set at the moment.
 
 REQUIREMENTS
 ------------
 NAVSTAT requires the following:
-- GPSD - http://www.catb.org/gpsd/
 - PyGame - http://www.pygame.org
-- GPS serial or USB puck that is functional with GPSD
+- PySerial - http://pyserial.sourceforge.net/
+- Serial or USB/Serial GPS device
 
 These libraries can be installed from their websites or with the following command: 
-sudo apt-get install gpsd gpsd-clients python-pygame
+sudo apt-get install python-serial python-pygame
 
 HOW TO USE
 ----------
-Ensure that GPSD is running correctly and has recognized your GPS puck. You can check this by
-running the following command: xgps
-
-This will launch an application that will show you your current GPS data. Please consult the GPSD
-website if you encounter problems.
+The GPS connection requires a serial connection. Ensure your device opens this connection.
 
 Run NAVSTAT by opening the NAVSTAT.py file with your favourite python editor. Run the script.
 

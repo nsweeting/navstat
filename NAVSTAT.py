@@ -30,6 +30,7 @@ class NAVSTAT():
 		self.track               = False
 		self.done                = False
 		self.mini                = False
+		self.route               = False
 		#Degree character required for lat/long
 		self.degree              = chr(176)
 		#Top speed on the speedometer
@@ -40,28 +41,31 @@ class NAVSTAT():
 		self.screen              = None
 		self.clock               = pygame.time.Clock()
 		#Compass rose x,y points
-		self.compass_rose_1      = [[643,40,'N'],[528,152,'W'],[643,263,'S'],[752,152,'E']]
-		self.compass_rose_2      = [[548,75,'NW'],[548,232,'SW'],[725,232,'SE'],[725,75,'NE']]
-		self.compass_rose_3      = [[(650,62),(650,82)],[(721,91),(711,101)],[(750,162),(730,162)],[(721,233),(711,223)],[(650,262),(650,242)],[(579,233),(589,223)],[(550,162),(570,162)],[(579,91),(589,101)]]
-		self.destination_bear    = 0.1
+		self.compass_rose_1      = [[393,40,'N'],[278,152,'W'],[393,263,'S'],[502,152,'E']]
+		self.compass_rose_2      = [[298,75,'NW'],[298,232,'SW'],[475,232,'SE'],[475,75,'NE']]
+		self.compass_rose_3      = [[(400,62),(400,82)],[(471,91),(461,101)],[(500,162),(480,162)],[(471,233),(461,223)],[(400,262),(400,242)],[(329,233),(339,223)],[(300,162),(320,162)],[(329,91),(339,101)]]
+		self.destination_info    = [0,0]
 		#Interface lines x,y points
-		self.interface_points    = [[0,22,800,22],[0,150,500,150],[0,300,800,300],[250,150,250,300],[250,0,250,150],[500,0,500,300]] 
+		self.interface_points    = [[0,22,800,22],[0,150,250,150],[0,300,250,300],[250,150,250,500],[250,0,250,150],[250,0,250,150],[250,370,550,370],[550,0,550,550],[250,465,550,465]] 
 		#Holds track point info for future file output
 		self.track_route         = []
 		#Number of seconds between each track point. Number of points between each track file output.
 		self.track_info          = [10,6]
 		#The max size of a track file.
 		self.track_maxsize       = None
+		self.route_current       = [0,0,'',0]
+		self.route_distance      = None
 		#File location of track files. File location of route files.
 		self.gpx_location        = ['','']
-		#Tracking object.
+		#Tracking and route object.
 		self.gpx_track           = None
+		self.gpx_route           = None
 		#Location of GPS serial device
 		self.gps_location        = None
 		#Baudrate of GPS serial device
 		self.gps_baudrate        = None
 		#Current lat/lon position
-		self.lat_lon             = ['','']
+		self.lat_lon             = [0,0]
 		#Unit measurement selected. Distance, speed.
 		self.unit_measure        = [0,0]
 		#Get settings
@@ -75,6 +79,7 @@ class NAVSTAT():
 		self.mini_mode()
 		self.night_mode()
 		self.track_mode()
+		self.route_mode()
 		#Main program loop - continue until quit
 		while self.done == False:
 			self.keyevents()
@@ -272,53 +277,38 @@ class NAVSTAT():
 
 	def destination(self):
 		'''Positions and draws destination interface. Does math to determine distance.'''
-		#Earth radius
-		radius = 6378.137
 		lat_1 = self.lat_lon[0]
 		lon_1 = self.lat_lon[1]
-		lat_2 = 55.263521
-		lon_2 = 128.212321
-		#Haversine formula determines distance between two points
-		lon_1, lat_1, lon_2, lat_2 = map(math.radians, [lon_1, lat_1, lon_2, lat_2])
-		dst_lon = lon_2 - lon_1
-		dst_lat = lat_2 - lat_1
-		a = math.sin(dst_lat/2)**2 + math.cos(lat_1) * math.cos(lat_2) * math.sin(dst_lon/2)**2
-		c = 2 * math.asin(math.sqrt(a))
-		dis_out = radius * c
-		dis_out = self.unit_convert(0,dis_out)
-		y = math.sin(dst_lon) * math.cos(lat_2)
-		x = math.cos(lat_1) * math.sin(lat_2) - math.sin(lat_1) * math.cos(lat_2) * math.cos(dst_lon)
-		brg_out = math.degrees(math.atan2(y, x))
-		brg_out = (brg_out + 360) % 360
-		self.destination_bear = round(brg_out)
+		lat_2 = self.route_current[0]
+		lon_2 = self.route_current[1]
 		#Positions destination distance text based on length
-		if dis_out >= 0 and dis_out < 10:
+		if self.destination_info[0] >= 0 and self.destination_info[0] < 10:
 			ext1 = 40
-		elif dis_out >= 10 and dis_out < 100:
+		elif self.destination_info[0] >= 10 and self.destination_info[0] < 100:
 			ext1 = 34
-		elif dis_out >= 100 and dis_out < 1000:
+		elif self.destination_info[0] >= 100 and self.destination_info[0] < 1000:
 			ext1 = 24
-		elif dis_out >= 1000 and dis_out < 10000:
+		elif self.destination_info[0] >= 1000 and self.destination_info[0] < 10000:
 			ext1 = 14
-		elif dis_out >= 10000 and dis_out < 100000:
+		elif self.destination_info[0] >= 10000 and self.destination_info[0] < 100000:
 			ext1 = 0
 		#Positions destination bearing text based on length
-		if brg_out < 10:
+		if self.destination_info[1] < 10:
 			ext2 = 14
-		elif brg_out >= 10 and brg_out < 100:
+		elif self.destination_info[1] >= 10 and self.destination_info[1] < 100:
 			ext2 = 7
-		elif brg_out > 100:
+		elif self.destination_info[1] > 100:
 			ext2 = 0
 		#Draws the destination interface text
-		self.txt_out((self.font_3.render('DST', True, self.colour_2)),355,0)
-		self.txt_out((self.font_4.render(str(round(dis_out,2)), True, self.colour_2)),298 + ext1,30)
-		self.txt_out((self.font_4.render(str(round(brg_out)).replace('.0','') + self.degree, True, self.colour_2)),344 + ext2,75)
+		self.txt_out((self.font_3.render('DST', True, self.colour_2)),385,347)
+		self.txt_out((self.font_4.render(str(self.destination_info[0]), True, self.colour_2)),328 + ext1,418)
+		self.txt_out((self.font_4.render(str(self.destination_info[1]).replace('.0','') + self.degree, True, self.colour_2)),370 + ext2,378)
 
 	def speedometer(self, speed_out):
 		'''Positions and draws the speedometer interface.
 		
 		Keyword arguments:
-		speed_out -- The current vessel speed
+		speed_out -- the current vessel speed
 		
 		'''
 		#Rounds and converts speed to unit setting
@@ -340,13 +330,11 @@ class NAVSTAT():
 		'''Positions and draws the compass interface.
 		
 		Keyword arguments:
-		compass_out -- The current vessel heading
+		compass_out -- the current vessel heading
 		
 		'''
-		#Determines the x,y position in compass in relation to degrees
-		rad = math.radians(compass_out)
-		x = round(650 + 100 * math.sin(rad))
-		y = round(162 - 100 * math.cos(rad))
+		#Determines the x,y position on compass circumference in relation to degrees
+		compass_main = self.compass_line(compass_out)
 		#Draws the compass rose
 		for point in self.compass_rose_1:
 			self.txt_out(self.font_2.render(point[2], True, self.colour_2),point[0],point[1])
@@ -354,13 +342,38 @@ class NAVSTAT():
 			self.txt_out(self.font_3.render(point[2], True, self.colour_2),point[0],point[1])
 		for point in self.compass_rose_3:
 			pygame.draw.lines(self.screen, self.colour_2, False, point, 3)
-		pygame.draw.circle(self.screen, self.colour_2, (650,162), 5)
-		pygame.draw.circle(self.screen, self.colour_2, (650,162), 100,3)
-		pygame.draw.lines(self.screen, self.colour_2, False, [(650,162),(x,y)], 4)
+		#Repositions degree text based on size
+		if compass_out < 10: 
+			ext = 14
+		elif compass_out >= 10 and compass_out < 100:
+			ext = 7
+		else:
+			ext = 0
+		if self.route == True:
+			compass_destination = self.compass_line(self.destination_info[1])
+			pygame.draw.lines(self.screen, self.colour_2, False, [(400,162),(compass_destination[0],compass_destination[1])], 1)
+		#Draws the compass interface
+		self.txt_out((self.font_3.render('COG', True, self.colour_2)),380,0)
+		pygame.draw.circle(self.screen, self.colour_2, (400,162), 5)
+		pygame.draw.circle(self.screen, self.colour_2, (400,162), 100,1)
+		pygame.draw.lines(self.screen, self.colour_2, False, [(400,162),(compass_main[0],compass_main[1])], 5)
+		self.txt_out((self.font_4.render(str(round(compass_out)).replace('.0','') + self.degree, True, self.colour_2)),370+ext,290)
+
+	def compass_line(self,degree):
+		'''Calculates the x,y coordinates of a point within a circle circumference based on degrees.
+		
+		Keyword arguments:
+		degree -- the degree to calculate upon
+		
+		'''
+		rad = math.radians(degree)
+		x = round(400 + 100 * math.sin(rad))
+		y = round(162 - 100 * math.cos(rad))
+		return [x,y]
 
 	def local_time(self):
 		'''Draws the current time/date interface.'''
-		self.txt_out((self.font_2.render(datetime.datetime.now().strftime('%Y-%m-%d %H:%M'), True, self.colour_2)),173,308)
+		self.txt_out((self.font_2.render(datetime.datetime.now().strftime('%Y-%m-%d %H:%M'), True, self.colour_2)),323,475)
 
 	def tracking(self):
 		'''Used as a thread to save tracking info for future file output.'''
@@ -387,11 +400,46 @@ class NAVSTAT():
 		self.gpx_track = None
 		self.track_route = []
 
+	def routing(self):
+		self.route_current = self.gpx_route.route_get()
+		while self.route == True:
+			self.destination_info = self.haversine(self.lat_lon[0],self.lat_lon[1],self.route_current[0],self.route_current[1])
+			self.route_distance = self.destination_info[1] + self.unit_convert(0,self.gpx_route.route_distance)
+			if self.destination_info[0] < 0.05:
+				self.route_current = self.gpx_route.route_get()
+			time.sleep(1)
+
 	def track_make(self):
 		'''Outputs the track info to the current track file.'''
 		#Runs through each track point for output
 		for point in self.track_route:
 			self.gpx_track.track_point(point[0][0], point[0][1], 0, point[1])
+
+	def haversine(self,lat_1,lon_1,lat_2,lon_2):
+		'''Calculates the distance between two coordinates.
+		
+		Keyword arguments:
+		lat_1 -- the base coordinate latitude
+		lon_1 -- the base coordinate longitude
+		lat_2 -- the alternate coordinate latitude
+		lon_2 -- the alternate coordinate longitude
+		
+		'''
+		#Earth radius
+		radius = 6378.137
+		lon_1, lat_1, lon_2, lat_2 = map(math.radians, [lon_1, lat_1, lon_2, lat_2])
+		dst_lon = lon_2 - lon_1
+		dst_lat = lat_2 - lat_1
+		a = math.sin(dst_lat/2)**2 + math.cos(lat_1) * math.cos(lat_2) * math.sin(dst_lon/2)**2
+		c = 2 * math.asin(math.sqrt(a))
+		dis_out = radius * c
+		#Converts to selected distance unit
+		dis_out = self.unit_convert(0,dis_out)
+		y = math.sin(dst_lon) * math.cos(lat_2)
+		x = math.cos(lat_1) * math.sin(lat_2) - math.sin(lat_1) * math.cos(lat_2) * math.cos(dst_lon)
+		brg_out = math.degrees(math.atan2(y, x))
+		brg_out = (brg_out + 360) % 360
+		return [round(dis_out,2),round(brg_out)]
 
 	def night_mode(self):
 		'''Checks whether Night Mode is enabled, and changes colour scheme to match.'''
@@ -403,6 +451,16 @@ class NAVSTAT():
 			self.colour_1 = self.colour_1_2
 			self.colour_2 = self.colour_2_2
 			self.night = False
+
+	def route_mode(self):
+		if self.route == False:
+			self.route = True
+			self.gpx_route = GPX.GPX(self.gpx_location[1])
+			self.gpx_route.route_start('Example.gpx')
+			thread.start_new_thread(self.routing, ())
+		else:
+			self.route = False
+
 
 	def track_mode(self):
 		'''Checks whether Track Mode is enabled, and starts a tracking thread if so.'''
@@ -423,11 +481,25 @@ class NAVSTAT():
 			self.screen = pygame.display.set_mode(self.size,pygame.FULLSCREEN)
 			self.mini = False
 
-	def txt_out(self,text, h, v):
-		self.screen.blit(text, [h,v])
+	def txt_out(self,text, x, y):
+		'''Gets pygame text ready to be outputted on screen.
+		
+		Keyword arguments:
+		text -- the text that will be outputted
+		x -- the horizontal position of the text
+		y -- the vertical position of the text
+		
+		'''
+		self.screen.blit(text, [x,y])
 
 	def unit_convert(self,type,num):
-		'''Converts GPS output units to the units of choice.'''
+		'''Converts GPS output units to the units of choice.
+		
+		Keyword arguments:
+		type -- The type of unit to convert, distance = 0, speed = 1.
+		num -- The number that needs to be converted.
+		
+		'''
 		#This converts distance to choice of unit. Starts in km.
 		if type == 0:
 			#Kilometers
