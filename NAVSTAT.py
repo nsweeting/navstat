@@ -1,3 +1,5 @@
+#! /usr/bin/env python
+
 import pygame
 import math
 import thread
@@ -46,7 +48,7 @@ class NAVSTAT():
 		self.compass_rose_3      = [[(400,62),(400,82)],[(471,91),(461,101)],[(500,162),(480,162)],[(471,233),(461,223)],[(400,262),(400,242)],[(329,233),(339,223)],[(300,162),(320,162)],[(329,91),(339,101)]]
 		self.destination_info    = [0,0]
 		#Interface lines x,y points
-		self.interface_points    = [[0,22,800,22],[0,150,250,150],[0,300,250,300],[250,150,250,500],[250,0,250,150],[250,0,250,150],[250,370,550,370],[550,0,550,550],[250,465,550,465]] 
+		self.interface_points    = [[0,22,800,22],[0,150,250,150],[0,300,250,300],[250,150,250,500],[250,0,250,150],[250,0,250,150],[250,370,800,370],[550,0,550,550],[0,465,800,465]] 
 		#Holds track point info for future file output
 		self.track_route         = []
 		#Number of seconds between each track point. Number of points between each track file output.
@@ -68,6 +70,7 @@ class NAVSTAT():
 		self.lat_lon             = [0,0]
 		#Unit measurement selected. Distance, speed.
 		self.unit_measure        = [0,0]
+		self.version             = None
 		#Get settings
 		self.settings()
 
@@ -80,17 +83,20 @@ class NAVSTAT():
 		self.night_mode()
 		self.track_mode()
 		self.route_mode()
+		self.splash()
+		while self.gps.lat == 0 and self.gps.lon == 0:
+			pass
 		#Main program loop - continue until quit
 		while self.done == False:
-			self.keyevents()
 			self.interface()
+			self.keyevents()
 			self.latlong(self.gps.lat, self.gps.lon)
 			self.speedometer(self.gps.speed)
 			self.compass(self.gps.track)
 			self.destination()
 			self.local_time()
 			self.clock.tick(self.frame_rate)
-			pygame.display.flip()
+			pygame.display.update()
 		self.quit()
 
 	def settings(self):
@@ -163,6 +169,8 @@ class NAVSTAT():
 						self.gps_location = str(settings_item[1])
 					elif settings_item[0] == 'gps_baudrate':
 						self.gps_baudrate = int(settings_item[1])
+					elif settings_item[0] == 'version':
+						self.version = settings_item[1]
 		settings.close()
 
 	def gpscheck(self):
@@ -193,7 +201,7 @@ class NAVSTAT():
 			pygame.draw.lines(self.screen, self.colour_2, False, [(point[0],point[1]),(point[2],point[3])], 2)
 		#If tracking is on, draw it
 		if self.track == True:
-			self.txt_out(self.font_1.render('Tracking', True, self.colour_2),445,312)
+			self.txt_out(self.font_1.render('Tracking - ' + self.gpx_track.gpx_file, True, self.colour_2),10,480)
 
 
 	def keyevents(self):
@@ -214,6 +222,15 @@ class NAVSTAT():
 				elif event.key == pygame.K_t:
 					self.track_mode()
 
+	def splash(self):
+		self.screen.fill(self.colour_1)
+		splash_font = pygame.font.Font(None, 60)
+		self.txt_out((splash_font.render('NAVSTAT', True, self.colour_2)),300,210)
+		self.txt_out((self.font_3.render('Bluewater Mechanics', True, self.colour_2)),310,260)
+		self.txt_out((self.font_1.render('v' + self.version, True, self.colour_2)),760,480)
+		pygame.display.update()
+		time.sleep(5)
+
 	def latlong(self,lat,lon):
 		'''Positions and draws the lat/long interface.
 		
@@ -222,38 +239,20 @@ class NAVSTAT():
 		lon -- the current longitude position
 		
 		'''
-		#Determines how long the lat string is, and provides correct decimal count
-		if lat < 0:
-			dec = 1
-		else:
-			dec = 0
-		if lat < 10 and lat > -10:
-			lat_out = str(lat)[0:7 + dec]
-		else:
-			lat_out = str(lat)[0:8 + dec]
-		#Determines how long the lat string is, and provides correct decimal count
-		if lon < 0:
-			dec = 1
-		else:
-			dec = 0
-		if lon < 10 and lon > -10:
-			lon_out = str(lon)[0:7 + dec]
-		elif lon >= 100 or lon <= -100:
-			lon_out = str(lon)[0:9 + dec]
-		else:
-			lon_out = str(lon)[0:8 + dec]
-		#Applies North/South based on - value
-		if lat_out[0:1] == '-':
-			lat_out = lat_out[1:] + ' S'
-		else:
-			lat_out = lat_out + ' N'
-		#Applies West/East based on - value
-		if lon_out[0:1] == '-':
-			lon_out = lon_out[1:] + ' W'
-		else:
-			lon_out = lon_out + ' E'
 		#Makes the current lat/lon available to the class
 		self.lat_lon = [lat, lon]
+		#Cuts the decimal count down to 5
+		lat_out = ("%.5f" % lat)
+		lon_out = ("%.5f" % lon)
+		#Applies N/S, W/E based on negative value
+		if lat < 0:
+			lat_out = lat_out[1:] + ' S'
+		elif lat > 0:
+			lat_out = lat_out + ' N'
+		if lon < 0:
+			lon_out = lon_out[1:] + ' W'
+		elif lon > 0:
+			lon_out = lon_out + ' E'
 		#Determines the lat length, and centres accordingly
 		l_len = len(lat_out)
 		if l_len == 10:
@@ -300,6 +299,9 @@ class NAVSTAT():
 		elif self.destination_info[1] > 100:
 			ext2 = 0
 		#Draws the destination interface text
+		self.txt_out((self.font_3.render('NXT', True, self.colour_2)),655,347)
+		self.txt_out((self.font_3.render(self.gpx_route.route_five[0][2], True, self.colour_2)),655,380)
+		self.txt_out((self.font_4.render(str(self.gpx_route.route_five[0][3]), True, self.colour_2)),655,418)
 		self.txt_out((self.font_3.render('DST', True, self.colour_2)),385,347)
 		self.txt_out((self.font_4.render(str(self.destination_info[0]), True, self.colour_2)),328 + ext1,418)
 		self.txt_out((self.font_4.render(str(self.destination_info[1]).replace('.0','') + self.degree, True, self.colour_2)),370 + ext2,378)
@@ -345,10 +347,11 @@ class NAVSTAT():
 		#Repositions degree text based on size
 		if compass_out < 10: 
 			ext = 14
-		elif compass_out >= 10 and compass_out < 100:
-			ext = 7
-		else:
+		elif compass_out >= 100:
 			ext = 0
+		else:
+			ext = 7
+		#If routing is enabled, draws the current destination line 
 		if self.route == True:
 			compass_destination = self.compass_line(self.destination_info[1])
 			pygame.draw.lines(self.screen, self.colour_2, False, [(400,162),(compass_destination[0],compass_destination[1])], 1)
@@ -380,7 +383,6 @@ class NAVSTAT():
 		x = 0
 		#Loop that keeps track of time, and saves track info based on this time
 		while self.track == True:
-			time.sleep(self.track_info[0])
 			self.track_route.append([self.lat_lon,self.gps.utc])
 			x = x + 1
 			if x > self.track_info[1]:
@@ -392,19 +394,19 @@ class NAVSTAT():
 					self.gpx_track.track_start()
 				self.track_route = []
 				x = 0
-		#Checks whether there is leftover track info, and outputs if so
-		if self.track_route:
-			self.track_make()
-		#Cleans and closes track variables and files
-		self.gpx_track.track_close()
-		self.gpx_track = None
-		self.track_route = []
+			time.sleep(self.track_info[0])
 
 	def routing(self):
+		'''Used as a thread to keep track of current position in relation to current route.'''
+		#Gets the next route position, and the next five
 		self.route_current = self.gpx_route.route_get()
+		#Run while routing is enabled
 		while self.route == True:
+			#Calculates distance between current position, and destination point
 			self.destination_info = self.haversine(self.lat_lon[0],self.lat_lon[1],self.route_current[0],self.route_current[1])
+			#Calculates total route distance
 			self.route_distance = self.destination_info[1] + self.unit_convert(0,self.gpx_route.route_distance)
+			#We're close to the destination - get the next point
 			if self.destination_info[0] < 0.05:
 				self.route_current = self.gpx_route.route_get()
 			time.sleep(1)
@@ -471,6 +473,16 @@ class NAVSTAT():
 			thread.start_new_thread(self.tracking, ())
 		else:
 			self.track = False
+			self.track_off()
+
+	def track_off(self):
+		if self.gpx_track:
+			if self.track_route:
+				self.track_make()
+			#Cleans and closes track variables and files
+			self.gpx_track.track_close()
+			self.gpx_track = None
+			self.track_route = []
 
 	def mini_mode(self):
 		'''Checks whether Mini Mode is enabled, and alters screen size if so.'''
@@ -531,16 +543,15 @@ class NAVSTAT():
 		#Closes GPS serial connection
 		self.gps.quit()
 		#Closes any open track files
-		if self.gpx_track != None: 
-			if self.track_route:
-				self.track_make()
-			self.gpx_track.track_close()
+		self.track_off()
 		time.sleep(2)
 		pygame.quit()
 		sys.exit()
 
+#import cProfile
 
 gps = NAVSTAT()
 gps.start()
+#cProfile.run('gps.start()')
 
 

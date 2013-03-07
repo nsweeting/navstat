@@ -58,43 +58,67 @@ class GPX():
 		self.gpx_doc.close()
 
 	def route_start(self,gpx_file):
+		'''Reads the entire GPX route file, and creates a list from it.
+		
+		Keyword arguments:
+		gpx_file -- the GPX route file to open
+		
+		'''
 		lat_lon = [0,0,'',0,0]
+		#Open the gpx route file
 		self.gpx_doc = open(self.gpx_location + gpx_file, 'r')
+		#Create a local version of functions
+		route_append = self.route_points.append
+		haversine = self.haversine
 		con = 0
+		#Run through each line of the route file
 		for line in self.gpx_doc:
-			if line.find('<rtept') != -1:
-				start = line.find('lat=')
-				end = line.find('lon=')
-				lat_lon[0] = float(line[start + 5:end - 2])
-				start = line.find('lon=')
-				end = line.find('">')
-				lat_lon[1] = float(line[start + 5:end])
+			line = line.lstrip()
+			#Extract route point lat/long
+			if line[1:6] == 'rtept':
+				line = line.split('"')
+				lat_lon[0] = float(line[1])
+				lat_lon[1] = float(line[3])
 				con = 1
-			if line.find('<name>') != -1 and con == 1:
-				start = line.find('<name>')
-				end = line.find('</name>')
-				lat_lon[2] = line[start + 6:end]
-				if len(self.route_points) >= 1:
-					haversine_info = self.haversine(self.route_points[-1][0],self.route_points[-1][1],lat_lon[0],lat_lon[1])
+			#Extract route point name
+			elif line[1:5] == 'name':
+				line = line.split('name>')
+				lat_lon[2] = line[1][:-2]
+				#As long as its not the first point
+				if self.route_points:
+					#Calculate the distance from the last point, to this point
+					haversine_info = haversine(self.route_points[-1][0],self.route_points[-1][1],lat_lon[0],lat_lon[1])
+					#Place distance in last point info
 					self.route_points[-1][3] = haversine_info
+					#Add to the total distance
 					self.route_distance = haversine_info + self.route_distance
-				self.route_points.append([lat_lon[0],lat_lon[1],lat_lon[2],0])
+				route_append([lat_lon[0],lat_lon[1],lat_lon[2],0])
 				con = 0
+		self.gpx_doc.close()
 
 	def route_get(self):
+		'''Returns the next point in the route list.'''
 		x = 1
+		#Empties the next five point list
 		self.route_five = []
+		#Moves the route position forward
 		self.route_position = self.route_position + 1
+		#Creates a new list of the next five points
 		while x < 6:
 			self.route_five.append(self.route_points[self.route_position + x])
 			x += 1
+		#Recalculates the route distance
 		self.route_calc()
+		#Returns the route point info
 		return self.route_points[self.route_position]
 
 	def route_calc(self):
+		'''Calculates the distance between the next route position, and all points after.'''
+		#Removes the current route point from calculation
 		x = self.route_position + 1
 		self.route_distance = 0
 		length = len(self.route_points) - 1
+		#Adds the distance info
 		while x < length:
 			self.route_distance = self.route_distance + self.route_points[x][3]
 			x += 1
