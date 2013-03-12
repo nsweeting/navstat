@@ -1,13 +1,15 @@
-#! /usr/bin/env python
+#!/usr/bin/env python
+#-*- coding: utf-8 -*-
 
 import pygame
-import math
 import thread
 import sys
 import time
+import math
 import datetime
-import NMEA
-import GPX
+import lib.nmea
+import lib.gpx
+import lib.geomath
 
 
 class NAVSTAT():
@@ -18,8 +20,8 @@ class NAVSTAT():
 		self.black               = (   0,   0,   0)
 		self.white               = ( 255, 255, 255)
 		self.red                 = ( 255,   0,   0)
-		self.colour_1            = self.white
-		self.colour_2            = self.black
+		self.colour_1            = self.black
+		self.colour_2            = self.white
 		self.colour_1_2          = self.colour_1
 		self.colour_2_2          = self.colour_2
 		#4 font sizes that are available
@@ -32,7 +34,11 @@ class NAVSTAT():
 		self.track               = False
 		self.done                = False
 		self.mini                = False
+		#Switches for autopilot, routing, and AIS
+		self.auto                = False
 		self.route               = False
+		self.ais                 = False
+		self.aismap_data         = None
 		#Degree character required for lat/long
 		self.degree              = chr(176)
 		#Top speed on the speedometer
@@ -55,7 +61,7 @@ class NAVSTAT():
 		self.track_info          = [10,6]
 		#The max size of a track file.
 		self.track_maxsize       = None
-		self.route_current       = [0,0,'',0]
+		self.route_current       = [0,0,'',0,0]
 		self.route_distance      = None
 		#File location of track files. File location of route files.
 		self.gpx_location        = ['','']
@@ -71,29 +77,41 @@ class NAVSTAT():
 		#Unit measurement selected. Distance, speed.
 		self.unit_measure        = [0,0]
 		self.version             = None
+		self.haversine           = lib.geomath.haversine
 		#Get settings
 		self.settings()
 
 	def start(self):
 		'''Starts the NAVSTAT program and contains main loop.'''
 		pygame.display.set_caption("NAVSTAT")
-		self.gpscheck()
-		#If a mode setting is on, switch it on
+		#Checks to enabled fullscreen and colours
 		self.mini_mode()
 		self.night_mode()
+		#Attempts to create a serial NMEA connection
+		self.gpscheck()
+		#Checks to enabled tracking and routing
 		self.track_mode()
 		self.route_mode()
+		#Throws splash on screen while connecting gps
 		self.splash()
-		while self.gps.lat == 0 and self.gps.lon == 0:
+		while self.nmea_connection.lat == 0 and self.nmea_connection.lon == 0:
 			pass
 		#Main program loop - continue until quit
 		while self.done == False:
-			self.interface()
+			#Checks the serial connection status
+			if self.nmea_connection.exit == True:
+				self.error_out('Err2: Serial connection lost. No incoming data.',210,260)
 			self.keyevents()
-			self.latlong(self.gps.lat, self.gps.lon)
-			self.speedometer(self.gps.speed)
-			self.compass(self.gps.track)
-			self.destination()
+			#Checks whether to activate AIS
+			if self.ais:
+				self.aismap(self.nmea_connection.track)
+			#Activates normal navigation window
+			else:
+				self.interface()
+				self.latlong(self.nmea_connection.lat, self.nmea_connection.lon)
+				self.speedometer(self.nmea_connection.speed)
+				self.compass(self.nmea_connection.track)
+				self.destination()
 			self.local_time()
 			self.clock.tick(self.frame_rate)
 			pygame.display.update()
@@ -181,15 +199,13 @@ class NAVSTAT():
 		while connection == False:
 			try:
 				#Opens a serial connection for NMEA GPS data
-				self.gps = NMEA.NMEA0183(self.gps_location, self.gps_baudrate, 5,'GPS')
-				self.gps.read()
+				self.nmea_connection = lib.nmea.NMEA0183(self.gps_location, self.gps_baudrate, 5)
+				self.nmea_connection.read()
 				connection = True
 			except:
 				#Wait 5 secs - no serial connection - shut down
 				if x == 5:
-					print 'No GPS connected. Cannot launch NAVSTAT.'
-					sys.exit()
-				time.sleep(1)
+					self.error_out('Err1: There is currently no GPS connected to NAVSTAT.',175,260)
 				x = x + 1
 
 	def interface(self):
@@ -221,13 +237,21 @@ class NAVSTAT():
 				#Pressed 'T' to tracking mode
 				elif event.key == pygame.K_t:
 					self.track_mode()
+				#Pressed 'A' to autopilot kode
+				elif event.key == pygame.K_a:
+					self.auto_mode()
+				elif event.key == pygame.K_RIGHT:
+					self.route_current = self.gpx_route.route_get()
+			elif event.type == pygame.QUIT:
+				self.quit()
 
 	def splash(self):
+		'''Creates a splash screen while first booting.'''
 		self.screen.fill(self.colour_1)
 		splash_font = pygame.font.Font(None, 60)
 		self.txt_out((splash_font.render('NAVSTAT', True, self.colour_2)),300,210)
 		self.txt_out((self.font_3.render('Bluewater Mechanics', True, self.colour_2)),310,260)
-		self.txt_out((self.font_1.render('v' + self.version, True, self.colour_2)),760,480)
+		self.txt_out((self.font_1.render('build ' + self.version, True, self.colour_2)),740,480)
 		pygame.display.update()
 		time.sleep(5)
 
@@ -298,10 +322,11 @@ class NAVSTAT():
 			ext2 = 7
 		elif self.destination_info[1] > 100:
 			ext2 = 0
+		self.crosstrack()
 		#Draws the destination interface text
 		self.txt_out((self.font_3.render('NXT', True, self.colour_2)),655,347)
-		self.txt_out((self.font_3.render(self.gpx_route.route_five[0][2], True, self.colour_2)),655,380)
-		self.txt_out((self.font_4.render(str(self.gpx_route.route_five[0][3]), True, self.colour_2)),655,418)
+		#self.txt_out((self.font_3.render(self.gpx_route.route_five[0][2], True, self.colour_2)),655,380)
+		#self.txt_out((self.font_4.render(str(self.gpx_route.route_five[0][3]), True, self.colour_2)),655,418)
 		self.txt_out((self.font_3.render('DST', True, self.colour_2)),385,347)
 		self.txt_out((self.font_4.render(str(self.destination_info[0]), True, self.colour_2)),328 + ext1,418)
 		self.txt_out((self.font_4.render(str(self.destination_info[1]).replace('.0','') + self.degree, True, self.colour_2)),370 + ext2,378)
@@ -336,7 +361,7 @@ class NAVSTAT():
 		
 		'''
 		#Determines the x,y position on compass circumference in relation to degrees
-		compass_main = self.compass_line(compass_out)
+		compass_main = self.compass_line(compass_out,100,400,162)
 		#Draws the compass rose
 		for point in self.compass_rose_1:
 			self.txt_out(self.font_2.render(point[2], True, self.colour_2),point[0],point[1])
@@ -353,7 +378,7 @@ class NAVSTAT():
 			ext = 7
 		#If routing is enabled, draws the current destination line 
 		if self.route == True:
-			compass_destination = self.compass_line(self.destination_info[1])
+			compass_destination = self.compass_line(self.destination_info[1],100,400,162)
 			pygame.draw.lines(self.screen, self.colour_2, False, [(400,162),(compass_destination[0],compass_destination[1])], 1)
 		#Draws the compass interface
 		self.txt_out((self.font_3.render('COG', True, self.colour_2)),380,0)
@@ -362,28 +387,55 @@ class NAVSTAT():
 		pygame.draw.lines(self.screen, self.colour_2, False, [(400,162),(compass_main[0],compass_main[1])], 5)
 		self.txt_out((self.font_4.render(str(round(compass_out)).replace('.0','') + self.degree, True, self.colour_2)),370+ext,290)
 
-	def compass_line(self,degree):
+	def compass_line(self,degree,radius,x,y):
 		'''Calculates the x,y coordinates of a point within a circle circumference based on degrees.
 		
 		Keyword arguments:
 		degree -- the degree to calculate upon
+		radius -- the radius of the circle
+		x -- the x position of the circle centre
+		y -- the y position of the circle centre
 		
 		'''
 		rad = math.radians(degree)
-		x = round(400 + 100 * math.sin(rad))
-		y = round(162 - 100 * math.cos(rad))
+		x = int(round(x + radius * math.sin(rad)))
+		y = int(round(y - radius * math.cos(rad)))
 		return [x,y]
+
+	def aismap(self,compass_out):
+		self.screen.fill(self.colour_1)
+		self.aismap_data = [[121334543,44.54204,-80.03334, 175.0],[12123232,44.50679,-79.84108, 228.0],[12123232,44.42924,-79.97292, 115.0],[12123232,44.50471,-80.19505, 10.0]]
+		for vessel in self.aismap_data:
+			vessel_data = self.haversine(self.nmea_connection.lat,self.nmea_connection.lon,vessel[1],vessel[2])
+			if vessel_data[0] < 20:
+				vessel_distance = round(vessel_data[0]*10,1)
+				vessel_position = self.compass_line(vessel_data[1],vessel_distance,400,225)
+				vessel_cog = self.compass_line(vessel[3],12,vessel_position[0],vessel_position[1])
+				pygame.draw.circle(self.screen, self.colour_2, (vessel_position[0],vessel_position[1]), 2)
+				pygame.draw.circle(self.screen, self.colour_2, (vessel_position[0],vessel_position[1]), 12, 1)
+				pygame.draw.lines(self.screen, self.colour_2, False, [(vessel_position[0],vessel_position[1]),(vessel_cog[0],vessel_cog[1])], 1)
+		compass_main = self.compass_line(compass_out,200,400,225)
+		pygame.draw.circle(self.screen, self.colour_2, (400,225), 200,1)
+		pygame.draw.lines(self.screen, self.colour_2, False, [(400,225),(compass_main[0],compass_main[1])], 3)
 
 	def local_time(self):
 		'''Draws the current time/date interface.'''
 		self.txt_out((self.font_2.render(datetime.datetime.now().strftime('%Y-%m-%d %H:%M'), True, self.colour_2)),323,475)
+
+	def aising(self):
+		while self.ais == True:
+			return
+
+	def autoing(self):
+		while self.auto == True:
+			return
 
 	def tracking(self):
 		'''Used as a thread to save tracking info for future file output.'''
 		x = 0
 		#Loop that keeps track of time, and saves track info based on this time
 		while self.track == True:
-			self.track_route.append([self.lat_lon,self.gps.utc])
+			self.track_route.append([self.lat_lon,self.nmea_connection.utc])
 			x = x + 1
 			if x > self.track_info[1]:
 				self.track_make()
@@ -404,10 +456,14 @@ class NAVSTAT():
 		while self.route == True:
 			#Calculates distance between current position, and destination point
 			self.destination_info = self.haversine(self.lat_lon[0],self.lat_lon[1],self.route_current[0],self.route_current[1])
+			#Converts to selected unit
+			self.destination_info[0] = self.unit_convert(0,self.destination_info[0])
 			#Calculates total route distance
-			self.route_distance = self.destination_info[1] + self.unit_convert(0,self.gpx_route.route_distance)
+			self.route_distance = self.destination_info[0] + self.unit_convert(0,self.gpx_route.route_distance)
+			#if self.destination_info[0] < 0.06:
+			#	return
 			#We're close to the destination - get the next point
-			if self.destination_info[0] < 0.05:
+			if self.destination_info[0] < 0.02:
 				self.route_current = self.gpx_route.route_get()
 			time.sleep(1)
 
@@ -417,31 +473,16 @@ class NAVSTAT():
 		for point in self.track_route:
 			self.gpx_track.track_point(point[0][0], point[0][1], 0, point[1])
 
-	def haversine(self,lat_1,lon_1,lat_2,lon_2):
-		'''Calculates the distance between two coordinates.
-		
-		Keyword arguments:
-		lat_1 -- the base coordinate latitude
-		lon_1 -- the base coordinate longitude
-		lat_2 -- the alternate coordinate latitude
-		lon_2 -- the alternate coordinate longitude
-		
-		'''
-		#Earth radius
-		radius = 6378.137
-		lon_1, lat_1, lon_2, lat_2 = map(math.radians, [lon_1, lat_1, lon_2, lat_2])
-		dst_lon = lon_2 - lon_1
-		dst_lat = lat_2 - lat_1
-		a = math.sin(dst_lat/2)**2 + math.cos(lat_1) * math.cos(lat_2) * math.sin(dst_lon/2)**2
-		c = 2 * math.asin(math.sqrt(a))
-		dis_out = radius * c
-		#Converts to selected distance unit
-		dis_out = self.unit_convert(0,dis_out)
-		y = math.sin(dst_lon) * math.cos(lat_2)
-		x = math.cos(lat_1) * math.sin(lat_2) - math.sin(lat_1) * math.cos(lat_2) * math.cos(dst_lon)
-		brg_out = math.degrees(math.atan2(y, x))
-		brg_out = (brg_out + 360) % 360
-		return [round(dis_out,2),round(brg_out)]
+	def crosstrack(self):
+		if self.gpx_route.route_points[0][0] == self.route_current[0]:
+			return
+		start_lat = self.gpx_route.route_points[self.gpx_route.route_position - 1][0]
+		start_lon = self.gpx_route.route_points[self.gpx_route.route_position - 1][1]
+		hav_start = self.haversine(start_lat, start_lon, self.lat_lon[0], self.lat_lon[1])
+		bearing_end = self.gpx_route.route_points[self.gpx_route.route_position - 1][4]
+		distance_xt = math.asin(math.sin(hav_start[0]/6378.137)*math.sin(hav_start[1]-bearing_end))*6378.137
+		ano = math.acos(math.cos(hav_start[0]/6378.137)/math.cos(distance_xt/6378.137))*6378.137
+		#print distance_xt
 
 	def night_mode(self):
 		'''Checks whether Night Mode is enabled, and changes colour scheme to match.'''
@@ -455,20 +496,20 @@ class NAVSTAT():
 			self.night = False
 
 	def route_mode(self):
+		'''Checks whether Route Mode is enabled, and starts a routing thread if so.'''
 		if self.route == False:
 			self.route = True
-			self.gpx_route = GPX.GPX(self.gpx_location[1])
-			self.gpx_route.route_start('Example.gpx')
+			self.gpx_route = lib.gpx.GPX(self.gpx_location[1])
+			self.gpx_route.route_start('ride somewhere.gpx')
 			thread.start_new_thread(self.routing, ())
 		else:
 			self.route = False
-
 
 	def track_mode(self):
 		'''Checks whether Track Mode is enabled, and starts a tracking thread if so.'''
 		if self.track == False:
 			self.track = True
-			self.gpx_track = GPX.GPX(self.gpx_location[0])
+			self.gpx_track = lib.GPX.GPX(self.gpx_location[0])
 			self.gpx_track.track_start()
 			thread.start_new_thread(self.tracking, ())
 		else:
@@ -492,6 +533,14 @@ class NAVSTAT():
 		else: 
 			self.screen = pygame.display.set_mode(self.size,pygame.FULLSCREEN)
 			self.mini = False
+
+	def auto_mode(self):
+		'''Checks whether Auto Mode is enabled, and turns it on if so.'''
+		if self.auto == False: 
+			thread.start_new_thread(self.autoing, ())
+			self.auto = True
+		else: 
+			self.auto = False
 
 	def txt_out(self,text, x, y):
 		'''Gets pygame text ready to be outputted on screen.
@@ -519,21 +568,43 @@ class NAVSTAT():
 				return num
 			#Miles
 			elif self.unit_measure[0] == 1:
-				return num*0.621371
+				return round(num*0.621371,2)
 			#Nautical Miles
 			elif self.unit_measure[0] == 2:
-				return num*0.539957
+				return round(num*0.539957,2)
 		#This converts speed to choice of unit. Starts in knots.
 		elif type == 1:
 			#Kilometers / Hour
 			if self.unit_measure[1] == 0:
-				return num*1.852
+				return round(num*1.852,2)
 			#Miles / Hour
 			elif self.unit_measure[1] == 1:
-				return num*1.15078
+				return round(num*1.15078,2)
 			#Nautical Miles / Hour
 			elif self.unit_measure[1] == 2:
 				return num
+
+	def error_out(self,error_text, x, y):
+		'''Creates an error splash screen to output occurence.
+		
+		Keyword arguments:
+		error_text -- the error number and text details
+		x -- the x position of the text
+		y -- the y position of the text
+		
+		'''
+		while True:
+			self.screen.fill(self.colour_1)
+			self.txt_out((self.font_2.render('Error', True, self.colour_2)),375,230)
+			self.txt_out((self.font_3.render(error_text, True, self.colour_2)),x,y)
+			pygame.display.update()
+			for event in pygame.event.get():
+				if event.type == pygame.KEYDOWN:
+					#Pressed 'Escape' to quit
+					if event.key == pygame.K_ESCAPE:
+						self.quit()
+				if event.type == pygame.QUIT:
+					self.quit()
 
 	def quit(self):
 		'''Gets NAVSTAT ready to quit.'''
@@ -541,7 +612,7 @@ class NAVSTAT():
 		self.txt_out((self.font_3.render('Exiting cleanly...', True, self.colour_2)),355,128)
 		pygame.display.flip()
 		#Closes GPS serial connection
-		self.gps.quit()
+		self.nmea_connection.quit()
 		#Closes any open track files
 		self.track_off()
 		time.sleep(2)
