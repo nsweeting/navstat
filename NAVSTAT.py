@@ -195,7 +195,6 @@ class NAVSTAT():
 		'''Determines whether a GPS connection is available - shuts down if not.'''
 		x = 0
 		connection = False
-		print 'Attempting to connect to GPS...'
 		while connection == False:
 			try:
 				#Opens a serial connection for NMEA GPS data
@@ -422,15 +421,15 @@ class NAVSTAT():
 		'''Draws the current time/date interface.'''
 		self.txt_out((self.font_2.render(datetime.datetime.now().strftime('%Y-%m-%d %H:%M'), True, self.colour_2)),323,475)
 
-	def aising(self):
+	def ais_start(self):
 		while self.ais == True:
 			return
 
-	def autoing(self):
+	def auto_start(self):
 		while self.auto == True:
 			return
 
-	def tracking(self):
+	def track_start(self):
 		'''Used as a thread to save tracking info for future file output.'''
 		x = 0
 		#Loop that keeps track of time, and saves track info based on this time
@@ -448,7 +447,7 @@ class NAVSTAT():
 				x = 0
 			time.sleep(self.track_info[0])
 
-	def routing(self):
+	def route_start(self):
 		'''Used as a thread to keep track of current position in relation to current route.'''
 		#Gets the next route position, and the next five
 		self.route_current = self.gpx_route.route_get()
@@ -482,7 +481,7 @@ class NAVSTAT():
 		bearing_end = self.gpx_route.route_points[self.gpx_route.route_position - 1][4]
 		distance_xt = math.asin(math.sin(hav_start[0]/6378.137)*math.sin(hav_start[1]-bearing_end))*6378.137
 		ano = math.acos(math.cos(hav_start[0]/6378.137)/math.cos(distance_xt/6378.137))*6378.137
-		#print distance_xt
+		print self.unit_convert(0,distance_xt)
 
 	def night_mode(self):
 		'''Checks whether Night Mode is enabled, and changes colour scheme to match.'''
@@ -501,7 +500,7 @@ class NAVSTAT():
 			self.route = True
 			self.gpx_route = lib.gpx.GPX(self.gpx_location[1])
 			self.gpx_route.route_start('ride somewhere.gpx')
-			thread.start_new_thread(self.routing, ())
+			thread.start_new_thread(self.route_start, ())
 		else:
 			self.route = False
 
@@ -511,7 +510,7 @@ class NAVSTAT():
 			self.track = True
 			self.gpx_track = lib.GPX.GPX(self.gpx_location[0])
 			self.gpx_track.track_start()
-			thread.start_new_thread(self.tracking, ())
+			thread.start_new_thread(self.track_start, ())
 		else:
 			self.track = False
 			self.track_off()
@@ -537,7 +536,7 @@ class NAVSTAT():
 	def auto_mode(self):
 		'''Checks whether Auto Mode is enabled, and turns it on if so.'''
 		if self.auto == False: 
-			thread.start_new_thread(self.autoing, ())
+			thread.start_new_thread(self.auto_start, ())
 			self.auto = True
 		else: 
 			self.auto = False
@@ -554,7 +553,7 @@ class NAVSTAT():
 		self.screen.blit(text, [x,y])
 
 	def unit_convert(self,type,num):
-		'''Converts GPS output units to the units of choice.
+		'''Converts unit output units to the units of choice.
 		
 		Keyword arguments:
 		type -- The type of unit to convert, distance = 0, speed = 1.
@@ -585,7 +584,7 @@ class NAVSTAT():
 				return num
 
 	def error_out(self,error_text, x, y):
-		'''Creates an error splash screen to output occurence.
+		'''Creates an error splash screen to output error detail.
 		
 		Keyword arguments:
 		error_text -- the error number and text details
