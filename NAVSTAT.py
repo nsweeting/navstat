@@ -321,11 +321,13 @@ class NAVSTAT():
 			ext2 = 7
 		elif self.destination_info[1] > 100:
 			ext2 = 0
-		self.crosstrack()
+		#Calculates the crosstrack error for the current route
+		if self.gpx_route.route_points[0][0] != self.route_current[0]:
+			hav_start = self.haversine(self.gpx_route.route_points[self.gpx_route.route_position - 1][0], self.gpx_route.route_points[self.gpx_route.route_position - 1][1], self.lat_lon[0], self.lat_lon[1])
+			distance_xt = math.asin(math.sin(hav_start[0]/6378.137)*math.sin(hav_start[1]-self.gpx_route.route_points[self.gpx_route.route_position - 1][4]))*6378.137
+			print self.unit_convert(0,distance_xt)
 		#Draws the destination interface text
 		self.txt_out((self.font_3.render('NXT', True, self.colour_2)),655,347)
-		#self.txt_out((self.font_3.render(self.gpx_route.route_five[0][2], True, self.colour_2)),655,380)
-		#self.txt_out((self.font_4.render(str(self.gpx_route.route_five[0][3]), True, self.colour_2)),655,418)
 		self.txt_out((self.font_3.render('DST', True, self.colour_2)),385,347)
 		self.txt_out((self.font_4.render(str(self.destination_info[0]), True, self.colour_2)),328 + ext1,418)
 		self.txt_out((self.font_4.render(str(self.destination_info[1]).replace('.0','') + self.degree, True, self.colour_2)),370 + ext2,378)
@@ -472,17 +474,6 @@ class NAVSTAT():
 		for point in self.track_route:
 			self.gpx_track.track_point(point[0][0], point[0][1], 0, point[1])
 
-	def crosstrack(self):
-		if self.gpx_route.route_points[0][0] == self.route_current[0]:
-			return
-		start_lat = self.gpx_route.route_points[self.gpx_route.route_position - 1][0]
-		start_lon = self.gpx_route.route_points[self.gpx_route.route_position - 1][1]
-		hav_start = self.haversine(start_lat, start_lon, self.lat_lon[0], self.lat_lon[1])
-		bearing_end = self.gpx_route.route_points[self.gpx_route.route_position - 1][4]
-		distance_xt = math.asin(math.sin(hav_start[0]/6378.137)*math.sin(hav_start[1]-bearing_end))*6378.137
-		ano = math.acos(math.cos(hav_start[0]/6378.137)/math.cos(distance_xt/6378.137))*6378.137
-		print self.unit_convert(0,distance_xt)
-
 	def night_mode(self):
 		'''Checks whether Night Mode is enabled, and changes colour scheme to match.'''
 		if self.night == False:
@@ -610,8 +601,11 @@ class NAVSTAT():
 		self.screen.fill(self.colour_1)
 		self.txt_out((self.font_3.render('Exiting cleanly...', True, self.colour_2)),355,128)
 		pygame.display.flip()
-		#Closes GPS serial connection
-		self.nmea_connection.quit()
+		try:
+			#Closes GPS serial connection
+			self.nmea_connection.quit()
+		except:
+			pass
 		#Closes any open track files
 		self.track_off()
 		time.sleep(2)
