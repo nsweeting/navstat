@@ -45,8 +45,8 @@ class NMEA0183():
 		'''The thread used to read incoming serial data.'''
 		dat_new = ''
 		dat_old = ''
+		#Loops until the connection is broken, or is instructed to quit
 		try:
-			#Loops until the connection is broken, or is instructed to quit
 			while self.is_open():
 				#Instructed to quit
 				if self.exit: break
@@ -55,7 +55,10 @@ class NMEA0183():
 					dat_new = ''
 				dat_old = dat_old + self.buffer()
 				if re.search("\r\n", dat_old):
-					self.serial_data, dat_new = dat_old.split("\r\n")
+					try:
+						self.serial_data, dat_new = dat_old.split("\r\n")
+					except:
+						pass
 					if self.checksum(self.serial_data):
 						if self.serial_data[0:3] == '$GP':
 							self.gps()
@@ -120,6 +123,7 @@ class NMEA0183():
 		if self.serial_data[3:6] == 'RMC':
 			self.serial_data = self.serial_data.split(',')
 			self.utc = self.gps_nmea2utc()
+			self.status = self.serial_data[2]
 			self.lat = self.gps_nmea2dec(0)
 			self.lon = self.gps_nmea2dec(1)
 			self.speed = float(self.serial_data[7])

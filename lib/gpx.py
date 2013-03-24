@@ -104,15 +104,8 @@ class GPX():
 
 	def route_get(self):
 		'''Returns the next point in the route list.'''
-		x = 1
-		#Empties the next five point list
-		self.route_five = []
 		#Moves the route position forward
 		self.route_position = self.route_position + 1
-		#Creates a new list of the next five points
-		#while x < 2:
-		#	self.route_five.append(self.route_points[self.route_position + x])
-		#	x += 1
 		#Recalculates the route distance
 		self.route_calc()
 		#Returns the route point info
@@ -132,11 +125,11 @@ class GPX():
 
 
 
-gpx_route = GPX('/home/home/NAVSTAT/Routes/')
-gpx_route.route_start('ride somewhere.gpx')
+#gpx_route = GPX('/home/home/NAVSTAT/Routes/')
+#gpx_route.route_start('ride somewhere.gpx')
 #hello = gpx_route.route_get()
 
-print gpx_route.route_points
+#print gpx_route.route_points
 #print gpx_route.route_distance
 #print gpx_route.route_five
 #print gpx_route.route_position
