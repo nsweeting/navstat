@@ -589,7 +589,7 @@ class NAVSTAT():
 		if self.route == False:
 			self.route = True
 			self.gpx_route = lib.gpx.GPX(self.gpx_location[1])
-			self.gpx_route.route_start('example.gpx')
+			self.gpx_route.route_start('Example.gpx')
 			thread.start_new_thread(self.route_start, ())
 			thread.start_new_thread(self.arrival_start, ())
 			thread.start_new_thread(self.crosstrack_start, ())
