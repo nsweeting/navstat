@@ -17,6 +17,7 @@ class GPX():
 		
 		'''
 		self.gpx_doc = ''
+		self.gpx_file = ''
 		self.gpx_location = location
 		self.route_position = -1
 		self.route_points = []
@@ -72,6 +73,7 @@ class GPX():
 		lat_lon = [0,0,'',0,0]
 		#Open the gpx route file
 		self.gpx_doc = open(self.gpx_location + gpx_file, 'r')
+		self.gpx_file = gpx_file
 		#Create a local version of functions
 		route_append = self.route_points.append
 		haversine = self.haversine
