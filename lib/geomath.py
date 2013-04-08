@@ -12,7 +12,7 @@ def haversine(lat_1,lon_1,lat_2,lon_2):
 	'''
 	#Earth radius
 	try:
-		radius = 6378.137
+		radius = 3443.92
 		lon_1, lat_1, lon_2, lat_2 = map(math.radians, [lon_1, lat_1, lon_2, lat_2])
 		dst_lon = lon_2 - lon_1
 		dst_lat = lat_2 - lat_1
