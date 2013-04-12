@@ -104,16 +104,28 @@ class GPX():
 				con = 0
 		self.gpx_doc.close()
 
-	def route_get(self):
-		'''Returns the next point in the route list.'''
-		#Moves the route position forward
-		self.route_position = self.route_position + 1
+	def route_get(self, mode):
+		'''Returns the next or last point in the route list.
+
+		Keyword arguments:
+		mode -- determines whether to move forward (0) / backward (1)
+		
+		'''
+		#Moves the route position forward or backward
+		if mode == 0:
+			self.route_position = self.route_position + 1
+			if self.route_position >= len(self.route_points):
+				self.route_position = self.route_position - 1
+		elif mode == 1:
+			self.route_position = self.route_position - 1
+			if self.route_position < 0:
+				self.route_position = 0
 		#Recalculates the route distance
-		self.route_calc()
+		self.route_calc(mode)
 		#Returns the route point info
 		return self.route_points[self.route_position]
 
-	def route_calc(self):
+	def route_calc(self,mode):
 		'''Calculates the distance between the next route position, and all points after.'''
 		#Removes the current route point from calculation
 		x = self.route_position + 1

@@ -58,7 +58,7 @@ class NAVSTAT():
 		#Hour and minutes to current waypoint
 		self.waypoint_eta        = ['','']
 		#Current crosstrack error for waypoint
-		self.waypoint_xte        = 0
+		self.waypoint_xte        = [0,'']
 		#Lat, lon, name, distance, and bearing of current route waypoint
 		self.route_current       = [0,0,'',0,0]
 		#The total distance of current route
@@ -67,8 +67,9 @@ class NAVSTAT():
 		self.route_eta           = None
 		self.xte_alarm           = 0
 		self.xte_status          = False
+		self.xte_angle           = [0,[0,0],0,[0,0]]
 		#Interface lines x,y points
-		self.interface_points    = [[0,22,800,22],[0,150,250,150],[0,300,250,300],[250,150,250,500],[250,0,250,150],[250,0,250,150],[250,370,800,370],[550,0,550,500],[0,465,800,465],[550,111,800,111],[550,199,800,199]] 
+		self.interface_points    = [[0,22,800,22],[0,150,250,150],[0,300,250,300],[250,150,250,500],[250,0,250,150],[250,0,250,150],[250,370,550,370],[550,0,550,500],[0,465,800,465],[550,311,800,311],[550,399,800,399],[550,110,800,110]] 
 		#Holds track point info for future file output
 		self.track_route         = []
 		#Number of seconds between each track point. Number of points between each track file output
@@ -225,12 +226,16 @@ class NAVSTAT():
 				x = x + 1
 
 	def menu(self):
-		self.txt_out((self.font_2.render(datetime.datetime.now().strftime('%Y-%m-%d %H:%M'), True, self.colour_2)),323,475)
+		'''Draws the menu interface common between all functions.'''
+		#Display current time
+		self.txt_out((self.font_2.render(datetime.datetime.now().strftime('%Y-%m-%d %H:%M'), True, self.colour_2)),323,472)
 		pygame.draw.rect(self.screen, self.colour_2, (0,500,800,30))
+		#Draw the various screen display options
 		self.txt_out(self.font_3.render('GPS', True, self.colour_1),100,510)
 		self.txt_out(self.font_3.render('AIS', True, self.colour_1),200,510)
 		self.txt_out(self.font_3.render('ENG', True, self.colour_1),300,510)
 		pygame.draw.rect(self.screen, self.colour_1, (68,500,100,10))
+		#Monitors GPS status and displays problems
 		if self.nmea_connection.status == 'A':
 			pygame.draw.circle(self.screen, self.colour_1, (30,515), 10)
 		else:
@@ -256,8 +261,12 @@ class NAVSTAT():
 				#Pressed 'A' to autopilot kode
 				elif event.key == pygame.K_a:
 					self.auto_mode()
+				#Pressed 'Right' to move forward on route
 				elif event.key == pygame.K_RIGHT:
-					self.route_current = self.gpx_route.route_get()
+					self.route_current = self.gpx_route.route_get(0)
+				#Pressed 'Left' to move backward on route
+				elif event.key == pygame.K_LEFT:
+					self.route_current = self.gpx_route.route_get(1)
 				elif event.key == pygame.K_F1:
 					self.navstat_mode = 0
 				elif event.key == pygame.K_F2:
@@ -284,9 +293,9 @@ class NAVSTAT():
 			pygame.draw.lines(self.screen, self.colour_2, False, [(point[0],point[1]),(point[2],point[3])], 2)
 		#If tracking is on, draw it
 		if self.track == True:
-			self.txt_out(self.font_1.render('Tracking - ' + self.gpx_track.gpx_file, True, self.colour_2),10,480)
+			self.txt_out(self.font_1.render('Tracking - ' + self.gpx_track.gpx_file, True, self.colour_2),10,477)
 		if self.route == True:
-			self.txt_out(self.font_1.render('Route - ' + self.gpx_route.gpx_file, True, self.colour_2),560,480)
+			self.txt_out(self.font_1.render('Route - ' + self.gpx_route.gpx_file, True, self.colour_2),560,477)
 			self.gps_destination()
 
 	def gps_latlong(self,lat,lon):
@@ -334,39 +343,44 @@ class NAVSTAT():
 
 	def gps_destination(self):
 		'''Positions and draws destination interface.'''
-		#Gets current GPS info for storage
-		lat_1 = self.lat_lon[0]
-		lon_1 = self.lat_lon[1]
-		lat_2 = self.route_current[0]
-		lon_2 = self.route_current[1]
-		wpt_distance = self.unit_convert(0,self.waypoint_info[0])
-		wpt_xte = self.unit_convert(0,self.waypoint_xte)
-		wpt_bearing = self.waypoint_info[1]
-		#Positions destination distance and bearing text based on length
-		ext1 = self.calc_size(wpt_distance)
-		ext2 = self.calc_size(wpt_bearing)
-		ext3 = self.calc_size(wpt_xte)
-		#Draws the destination interface text
-		#self.txt_out((self.font_3.render('NXT', True, self.colour_2)),655,347)
+		#Positions and draws the route interface
 		self.txt_out((self.font_3.render('WPT', True, self.colour_2)),385,347)
-		self.txt_out((self.font_4.render(str(wpt_distance) + ' ' + self.unit_text[0], True, self.colour_2)),300 + ext1,418)
-		self.txt_out((self.font_4.render(str(wpt_bearing).replace('.0','') + self.degree, True, self.colour_2)),343 + ext2,378)
-		#Positions and draws crosstrack error interface.
-		#Positions xte text based on length
+		self.txt_out((self.font_3.render('WTA', True, self.colour_2)),655,376)
 		self.txt_out((self.font_3.render('XTE', True, self.colour_2)),655,0)
-		self.txt_out((self.font_4.render(str(wpt_xte) + ' ' + self.unit_text[0], True, self.colour_2)),570 + ext3,30)
-		if self.xte_status == True:
-			print 'hello'
-		#Positions and draws the RTA interface.
-		self.txt_out((self.font_3.render('RTA', True, self.colour_2)),655,88)
-		self.txt_out((self.font_2.render(self.route_eta, True, self.colour_2)),600,125)
-		#Positions and draws the WTA interface.
-		self.txt_out((self.font_3.render('WTA', True, self.colour_2)),655,176)
-		if self.waypoint_eta[0] == '1000':
-			self.txt_out((self.font_4.render('1000h +', True, self.colour_2)),615,206)
-		else:
-			ext = self.calc_size(self.waypoint_eta[0])
-			self.txt_out((self.font_4.render(str(self.waypoint_eta[0]) + 'h' + ' : ' + self.waypoint_eta[1] + 'm', True, self.colour_2)),565 + ext,206)
+		self.txt_out((self.font_3.render('RTA', True, self.colour_2)),655,288)
+		if self.route == True:
+			#Gets current waypoint info for storage
+			wpt_distance = self.unit_convert(0,self.waypoint_info[0])
+			wpt_xte = [self.unit_convert(0,self.waypoint_xte[0]),self.waypoint_xte[1]]
+			wpt_bearing = self.waypoint_info[1]
+			#Positions destination distance and bearing text based on length
+			ext1 = self.calc_size(wpt_distance)
+			ext2 = self.calc_size(wpt_bearing)
+			ext3 = self.calc_size(wpt_xte[0])
+			#Draws the waypoint bearing info
+			self.txt_out((self.font_4.render(str(wpt_distance) + ' ' + self.unit_text[0], True, self.colour_2)),300 + ext1,418)
+			self.txt_out((self.font_4.render(str(wpt_bearing).replace('.0','') + self.degree, True, self.colour_2)),343 + ext2,378)
+			#Positions and draws crosstrack error interface
+			#Positions xte text based on length
+			self.txt_out((self.font_4.render(wpt_xte[1] + str(wpt_xte[0]) + ' ' + self.unit_text[0], True, self.colour_2)),555 + ext3,30)
+			if self.xte_status == True:
+				print 'hello'
+			#Positions and draws the RTA info.
+			self.txt_out((self.font_2.render(self.route_eta, True, self.colour_2)),600,325)
+			#WTA hours too large to display
+			if self.waypoint_eta[0] == '1000':
+				self.txt_out((self.font_4.render('1000h +', True, self.colour_2)),615,406)
+			else:
+				#Positions and draws the WTA info
+				ext = self.calc_size(self.waypoint_eta[0])
+				self.txt_out((self.font_4.render(str(self.waypoint_eta[0]) + 'h' + ' : ' + self.waypoint_eta[1] + 'm', True, self.colour_2)),565 + ext,406)
+			#Draw crosstrack angle if available
+			if self.waypoint_xte[1] != '':
+				self.txt_out((self.font_4.render(str(self.xte_angle[2]).replace('.0','') + self.degree, True, self.colour_2)),580,220)
+				pygame.draw.polygon(self.screen, self.colour_2, [(675,170),(669,190),(681,190)],1)
+				pygame.draw.circle(self.screen, self.colour_2, (self.xte_angle[1][0],self.xte_angle[1][1]), 2)
+				pygame.draw.lines(self.screen, self.colour_2, False, [(self.xte_angle[0],170),(self.xte_angle[1][0],self.xte_angle[1][1])], 1)
+				pygame.draw.lines(self.screen, self.colour_2, False, [(self.xte_angle[0],170),(self.xte_angle[3][0],self.xte_angle[3][1])], 1)
 
 	def gps_speedometer(self, speed_out):
 		'''Positions and draws the speedometer interface.
@@ -419,6 +433,9 @@ class NAVSTAT():
 		pygame.draw.circle(self.screen, self.colour_2, (400,162), 100,1)
 		pygame.draw.lines(self.screen, self.colour_2, False, [(400,162),(compass_main[0],compass_main[1])], 5)
 		self.txt_out((self.font_4.render(str(round(compass_out)).replace('.0','') + self.degree, True, self.colour_2)),342 + ext,290)
+
+	def gps_xteline(self):
+		return
 
 	def calc_line(self,degree,radius,x,y):
 		'''Calculates the x,y coordinates of a point within a circle circumference based on degrees.
@@ -476,7 +493,7 @@ class NAVSTAT():
 	def route_start(self):
 		'''Used to keep track of current position in relation to current route - run as thread.'''
 		#Gets the next route position
-		self.route_current = self.gpx_route.route_get()
+		self.route_current = self.gpx_route.route_get(0)
 		#Run while routing is enabled
 		while self.route == True:
 			#Calculates distance between current position, and destination point
@@ -485,7 +502,7 @@ class NAVSTAT():
 			self.route_distance = self.waypoint_info[0] + self.gpx_route.route_distance
 			#We're close to the destination - get the next point
 			if self.waypoint_info[0] < 0.02:
-				self.route_current = self.gpx_route.route_get()
+				self.route_current = self.gpx_route.route_get(0)
 			time.sleep(1)
 
 	def arrival_start(self):
@@ -507,6 +524,7 @@ class NAVSTAT():
 				time_point = self.waypoint_info[0] / speed
 				time_point_min, time_point_hour = math.modf(time_point)
 				time_point_min = round(time_point_min*60)
+				#If time is too large to display properly
 				if time_point_hour > 1000:
 					self.waypoint_eta[0] = '1000'
 				else:
@@ -519,7 +537,7 @@ class NAVSTAT():
 				time.sleep(4)
 			#Do not estimate times if speed is 0
 			else:
-				self.route_eta = '--'
+				self.route_eta = '           --'
 				self.waypoint_eta[0] = '--'
 				self.waypoint_eta[1] = '--'
 
@@ -531,17 +549,53 @@ class NAVSTAT():
 			if self.gpx_route.route_points[0][0] != self.route_current[0]:
 				#Gets haversine info of last route point
 				hav_start = self.haversine(self.gpx_route.route_points[self.gpx_route.route_position - 1][0], self.gpx_route.route_points[self.gpx_route.route_position - 1][1], self.lat_lon[0], self.lat_lon[1])
-				self.waypoint_xte = math.asin(math.sin(hav_start[0]/3443.92)*math.sin(hav_start[1]-self.gpx_route.route_points[self.gpx_route.route_position - 1][4]))*3443.92
-				if self.waypoint_xte < 0:
-					self.waypoint_xte = self.waypoint_xte*(-1)
-			else:
-				self.waypoint_xte = '--'
-			if self.waypoint_xte >= self.xte_alarm:
-				if self.xte_status == True:
-					self.xte_status == False
-				elif self.xte_status == False:
+				#Crosstrack calculation
+				self.waypoint_xte[0] = math.asin(math.sin(hav_start[0]/3443.92)*math.sin(hav_start[1]-self.gpx_route.route_points[self.gpx_route.route_position - 1][4]))*3443.92
+				#Negative is left of course - making positive again
+				if self.waypoint_xte[0] < 0:
+					self.waypoint_xte[0] = self.waypoint_xte[0]*(-1)
+					self.waypoint_xte[1] = 'L'
+				#Right of course
+				elif self.waypoint_xte[0] > 0:
+					self.waypoint_xte[1] ='R'
+				#Creates a crosstrack angle
+				self.crosstrack_angle()
+				#Checks for XTE alarm status
+				if self.waypoint_xte[0] >= self.xte_alarm:
 					self.xte_status == True
+				elif self.waypoint_xte[0] < self.xte_alarm:
+					self.xte_status == False
+			#No current standard bearing
+			else:
+				self.waypoint_xte[0] = '    --'
+				self.waypoint_xte[1] =''
 			time.sleep(1)
+
+	def crosstrack_angle(self):
+		'''Calculates the crosstrack angle numbers for the interface.'''
+		#Determines the positioning of the xte angle, based on xte distance
+		if self.waypoint_xte[0] < 5:
+			xte_lineadd = int(round(self.waypoint_xte[0]*10))
+		else:
+			xte_lineadd = 50
+		#Adds/subs the above to the base position
+		if self.waypoint_xte[1] == 'L':
+			self.xte_angle[0] = 675 + xte_lineadd
+		elif self.waypoint_xte[1] == 'R':
+			self.xte_angle[0] = 675 - xte_lineadd
+		#Determines how far away, in degrees, the current track is from the waypoint track
+		self.xte_angle[2] = self.gpx_route.route_points[self.gpx_route.route_position - 1][4] - self.nmea_connection.track
+		self.xte_angle[2] = round((self.xte_angle[2] + 180) % 360 - 180)
+		#Negative is left, positive is right
+		if self.xte_angle[2] < 0:
+			xte_calc = 360 + self.xte_angle[2]
+		elif self.xte_angle[2] > 0:
+			xte_calc = 0 + self.xte_angle[2]
+		else:
+			xte_calc = 0
+		xte_calc_opposite = (xte_calc + 180) % 360
+		self.xte_angle[1] = self.calc_line(xte_calc,40,self.xte_angle[0],170)
+		self.xte_angle[3] = self.calc_line(xte_calc_opposite,15,self.xte_angle[0],170)
 
 	def ais_start(self):
 		while self.ais == True:
