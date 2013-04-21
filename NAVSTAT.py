@@ -5,11 +5,12 @@ import pygame
 import thread
 import sys
 import time
-import math
 import datetime
 import lib.nmea
 import lib.gpx
 import lib.geomath
+import lib.route
+import lib.track
 
 
 class NAVSTAT():
@@ -37,7 +38,6 @@ class NAVSTAT():
 		self.mini                = False
 		#Switches for autopilot, routing, and AIS
 		self.auto                = False
-		self.route               = False
 		self.ais                 = False
 		self.aismap_data         = None
 		#Degree character required for lat/long
@@ -53,43 +53,23 @@ class NAVSTAT():
 		self.compass_rose_1      = [[393,40,'N'],[278,152,'W'],[393,263,'S'],[502,152,'E']]
 		self.compass_rose_2      = [[298,75,'NW'],[298,232,'SW'],[475,232,'SE'],[475,75,'NE']]
 		self.compass_rose_3      = [[(400,62),(400,82)],[(471,91),(461,101)],[(500,162),(480,162)],[(471,233),(461,223)],[(400,262),(400,242)],[(329,233),(339,223)],[(300,162),(320,162)],[(329,91),(339,101)]]
-		#Distance and bearing to current waypoint
-		self.waypoint_info       = [0,0]
-		#Hour and minutes to current waypoint
-		self.waypoint_eta        = ['','']
-		#Current crosstrack error for waypoint
-		self.waypoint_xte        = [0,'']
-		#Lat, lon, name, distance, and bearing of current route waypoint
-		self.route_current       = [0,0,'',0,0]
-		#The total distance of current route
-		self.route_distance      = None
-		#Tje estimated date of arrival for total route
-		self.route_eta           = None
-		self.xte_alarm           = 0
-		self.xte_status          = False
-		self.xte_angle           = [0,[0,0],0,[0,0]]
 		#Interface lines x,y points
 		self.interface_points    = [[0,22,800,22],[0,150,250,150],[0,300,250,300],[250,150,250,500],[250,0,250,150],[250,0,250,150],[250,370,550,370],[550,0,550,500],[0,465,800,465],[550,311,800,311],[550,399,800,399],[550,110,800,110]] 
-		#Holds track point info for future file output
-		self.track_route         = []
-		#Number of seconds between each track point. Number of points between each track file output
-		self.track_info          = [10,6]
-		#The max size of a track file
-		self.track_maxsize       = None
 		#File location of track files and of route files
 		self.gpx_location        = ['','']
-		#Tracking and route object
-		self.gpx_track           = None
-		self.gpx_route           = None
 		#Location and baudrate of GPS serial device
 		self.gps_info            = [None,None]
-		#Current lat/lon position
-		self.lat_lon             = [0,0]
 		#Unit measurement selected. Distance, speed.
 		self.unit_measure        = [0,0]
 		self.unit_text           = ['','']
 		self.version             = None
 		self.haversine           = lib.geomath.haversine
+		self.calc_line           = lib.geomath.calc_line
+		self.unit_convert        = lib.geomath.unit_convert
+		self.calc_size           = lib.geomath.calc_size
+		self.cache         		 = CACHE()
+		self.route               = lib.route.ROUTE(self.cache)
+		self.track               = lib.track.TRACK(self.cache)
 		#Get settings
 		self.settings()
 
@@ -102,8 +82,8 @@ class NAVSTAT():
 		#Attempts to create a serial NMEA connection
 		self.gpscheck()
 		#Checks to enabled tracking and routing
-		self.track_mode()
-		self.route_mode()
+		self.track.switch(self.gpx_location[0])
+		self.route.switch(self.gpx_location[1])
 		#Throws splash on screen while connecting gps
 		self.splash()
 		while self.nmea_connection.lat == 0 and self.nmea_connection.lon == 0:
@@ -117,10 +97,12 @@ class NAVSTAT():
 			self.keyevents()
 			#GPS mode enabled
 			if self.navstat_mode == 0:
+				self.cache.cache([self.nmea_connection.lat, self.nmea_connection.lon], self.nmea_connection.speed, self.nmea_connection.track, self.nmea_connection.utc, self.nmea_connection.status)
 				self.gps_interface()
-				self.gps_latlong(self.nmea_connection.lat, self.nmea_connection.lon)
-				self.gps_speedometer(self.nmea_connection.speed)
-				self.gps_compass(self.nmea_connection.track)
+				self.gps_latlong()
+				self.gps_speedometer()
+				self.gps_compass()
+				self.gps_destination()
 			#AIS mode enabled
 			elif self.navstat_mode == 1:
 				self.aismap(self.nmea_connection.track)
@@ -165,22 +147,22 @@ class NAVSTAT():
 							self.night = False
 					elif settings_item[0] == 'track_mode':
 						if str(settings_item[1]) == 'OFF':
-							self.track = True
+							self.track.mode = True
 						else:
-							self.track = False
+							self.track.mode = False
 					elif settings_item[0] == 'mini_mode':
 						if str(settings_item[1]) == 'OFF':
 							self.mini = True
 						else:
 							self.mini = False
 					elif settings_item[0] == 'track_secs':
-						self.track_info[0] = int(settings_item[1])
+						self.track.save_info[0] = int(settings_item[1])
 					elif settings_item[0] == 'track_save':
-						self.track_info[1] = int(settings_item[1])
+						self.track.save_info[1] = int(settings_item[1])
 					elif settings_item[0] == 'track_location':
 						self.gpx_location[0] = str(settings_item[1])
 					elif settings_item[0] == 'track_maxsize':
-						self.track_maxsize = int(settings_item[1])
+						self.track.maxsize = int(settings_item[1])
 					elif settings_item[0] == 'route_location':
 						self.gpx_location[1] = str(settings_item[1])
 					elif settings_item[0] == 'unit_distance':
@@ -236,7 +218,7 @@ class NAVSTAT():
 		self.txt_out(self.font_3.render('ENG', True, self.colour_1),300,510)
 		pygame.draw.rect(self.screen, self.colour_1, (68,500,100,10))
 		#Monitors GPS status and displays problems
-		if self.nmea_connection.status == 'A':
+		if self.cache.status == 'A':
 			pygame.draw.circle(self.screen, self.colour_1, (30,515), 10)
 		else:
 			pygame.draw.circle(self.screen, self.colour_1, (30,515), 10,1)
@@ -257,16 +239,16 @@ class NAVSTAT():
 					self.night_mode()
 				#Pressed 'T' to tracking mode
 				elif event.key == pygame.K_t:
-					self.track_mode()
+					self.track.switch(self.gpx_location[0])
 				#Pressed 'A' to autopilot kode
 				elif event.key == pygame.K_a:
 					self.auto_mode()
 				#Pressed 'Right' to move forward on route
 				elif event.key == pygame.K_RIGHT:
-					self.route_current = self.gpx_route.route_get(0)
+					self.route.get(0)
 				#Pressed 'Left' to move backward on route
 				elif event.key == pygame.K_LEFT:
-					self.route_current = self.gpx_route.route_get(1)
+					self.route.get(1)
 				elif event.key == pygame.K_F1:
 					self.navstat_mode = 0
 				elif event.key == pygame.K_F2:
@@ -292,13 +274,13 @@ class NAVSTAT():
 		for point in self.interface_points:
 			pygame.draw.lines(self.screen, self.colour_2, False, [(point[0],point[1]),(point[2],point[3])], 2)
 		#If tracking is on, draw it
-		if self.track == True:
-			self.txt_out(self.font_1.render('Tracking - ' + self.gpx_track.gpx_file, True, self.colour_2),10,477)
-		if self.route == True:
-			self.txt_out(self.font_1.render('Route - ' + self.gpx_route.gpx_file, True, self.colour_2),560,477)
+		if self.track.mode == True:
+			self.txt_out(self.font_1.render('Tracking - ' + self.track.gpx_track.gpx_file, True, self.colour_2),10,477)
+		if self.route.mode == True:
+			self.txt_out(self.font_1.render('Route - ' + self.route.gpx_route.gpx_file, True, self.colour_2),560,477)
 			self.gps_destination()
 
-	def gps_latlong(self,lat,lon):
+	def gps_latlong(self):
 		'''Positions and draws the lat/long interface.
 		
 		Keyword arguments:
@@ -306,11 +288,11 @@ class NAVSTAT():
 		lon -- the current longitude position
 		
 		'''
-		#Makes the current lat/lon available to the class
-		self.lat_lon = [lat, lon]
 		#Cuts the decimal count down to 5
-		lat_out = ("%.5f" % lat)
-		lon_out = ("%.5f" % lon)
+		lat = self.cache.lat_lon[0]
+		lon = self.cache.lat_lon[1]
+		lat_out = ("%.5f" % self.cache.lat_lon[0])
+		lon_out = ("%.5f" % self.cache.lat_lon[1])
 		#Applies N/S, W/E based on negative value
 		if lat < 0:
 			lat_out = lat_out[1:] + ' S'
@@ -348,11 +330,11 @@ class NAVSTAT():
 		self.txt_out((self.font_3.render('WTA', True, self.colour_2)),655,376)
 		self.txt_out((self.font_3.render('XTE', True, self.colour_2)),655,0)
 		self.txt_out((self.font_3.render('RTA', True, self.colour_2)),655,288)
-		if self.route == True:
+		if self.route.mode == True:
 			#Gets current waypoint info for storage
-			wpt_distance = self.unit_convert(0,self.waypoint_info[0])
-			wpt_xte = [self.unit_convert(0,self.waypoint_xte[0]),self.waypoint_xte[1]]
-			wpt_bearing = self.waypoint_info[1]
+			wpt_distance = self.unit_convert(self.unit_measure,0,self.route.waypoint_calc['distance'])
+			wpt_xte = [self.unit_convert(self.unit_measure,0,self.route.waypoint_xte[0]),self.route.waypoint_xte[1]]
+			wpt_bearing = self.route.waypoint_calc['bearing']
 			#Positions destination distance and bearing text based on length
 			ext1 = self.calc_size(wpt_distance)
 			ext2 = self.calc_size(wpt_bearing)
@@ -363,26 +345,26 @@ class NAVSTAT():
 			#Positions and draws crosstrack error interface
 			#Positions xte text based on length
 			self.txt_out((self.font_4.render(wpt_xte[1] + str(wpt_xte[0]) + ' ' + self.unit_text[0], True, self.colour_2)),555 + ext3,30)
-			if self.xte_status == True:
+			if self.route.xte_status == True:
 				print 'hello'
 			#Positions and draws the RTA info.
-			self.txt_out((self.font_2.render(self.route_eta, True, self.colour_2)),600,325)
+			self.txt_out((self.font_2.render(self.route.total_eta, True, self.colour_2)),600,325)
 			#WTA hours too large to display
-			if self.waypoint_eta[0] == '1000':
+			if self.route.waypoint_eta['hour'] == '1000':
 				self.txt_out((self.font_4.render('1000h +', True, self.colour_2)),615,406)
 			else:
 				#Positions and draws the WTA info
-				ext = self.calc_size(self.waypoint_eta[0])
-				self.txt_out((self.font_4.render(str(self.waypoint_eta[0]) + 'h' + ' : ' + self.waypoint_eta[1] + 'm', True, self.colour_2)),565 + ext,406)
+				ext = self.calc_size(self.route.waypoint_eta['hour'])
+				self.txt_out((self.font_4.render(str(self.route.waypoint_eta['hour']) + 'h' + ' : ' + self.route.waypoint_eta['min'] + 'm', True, self.colour_2)),565 + ext,406)
 			#Draw crosstrack angle if available
-			if self.waypoint_xte[1] != '':
-				self.txt_out((self.font_4.render(str(self.xte_angle[2]).replace('.0','') + self.degree, True, self.colour_2)),580,220)
+			if self.route.waypoint_xte[1] != '':
+				self.txt_out((self.font_4.render(str(self.route.xte_angle[2]).replace('.0','') + self.degree, True, self.colour_2)),580,220)
 				pygame.draw.polygon(self.screen, self.colour_2, [(675,170),(669,190),(681,190)],1)
-				pygame.draw.circle(self.screen, self.colour_2, (self.xte_angle[1][0],self.xte_angle[1][1]), 2)
-				pygame.draw.lines(self.screen, self.colour_2, False, [(self.xte_angle[0],170),(self.xte_angle[1][0],self.xte_angle[1][1])], 1)
-				pygame.draw.lines(self.screen, self.colour_2, False, [(self.xte_angle[0],170),(self.xte_angle[3][0],self.xte_angle[3][1])], 1)
+				pygame.draw.circle(self.screen, self.colour_2, (self.route.xte_angle[1][0],self.route.xte_angle[1][1]), 2)
+				pygame.draw.lines(self.screen, self.colour_2, False, [(self.route.xte_angle[0],170),(self.route.xte_angle[1][0],self.route.xte_angle[1][1])], 1)
+				pygame.draw.lines(self.screen, self.colour_2, False, [(self.route.xte_angle[0],170),(self.route.xte_angle[3][0],self.route.xte_angle[3][1])], 1)
 
-	def gps_speedometer(self, speed_out):
+	def gps_speedometer(self):
 		'''Positions and draws the speedometer interface.
 		
 		Keyword arguments:
@@ -390,7 +372,7 @@ class NAVSTAT():
 		
 		'''
 		#Rounds and converts speed to unit setting
-		speed_out = round(self.unit_convert(1,speed_out),1)
+		speed_out = round(self.unit_convert(self.unit_measure,1,self.cache.speed),1)
 		#Determines speedometer position based on top speed
 		speed_meter = (speed_out*220)/self.speed_top
 		if speed_meter > 220:
@@ -405,7 +387,7 @@ class NAVSTAT():
 		self.txt_out((self.font_1.render(str(self.speed_top/2), True, self.colour_2)),116,253)
 		self.txt_out((self.font_1.render('0', True, self.colour_2)),15,253)
 
-	def gps_compass(self, compass_out):
+	def gps_compass(self):
 		'''Positions and draws the compass interface.
 		
 		Keyword arguments:
@@ -413,6 +395,7 @@ class NAVSTAT():
 		
 		'''
 		#Determines the x,y position on compass circumference in relation to degrees
+		compass_out = self.cache.track 
 		compass_main = self.calc_line(compass_out,100,400,162)
 		#Draws the compass rose
 		for point in self.compass_rose_1:
@@ -424,8 +407,8 @@ class NAVSTAT():
 		#Repositions degree text based on size
 		ext = self.calc_size(compass_out)
 		#If routing is enabled, draws the current destination line 
-		if self.route == True:
-			compass_destination = self.calc_line(self.waypoint_info[1],100,400,162)
+		if self.route.mode == True:
+			compass_destination = self.calc_line(self.route.waypoint_calc['bearing'],100,400,162)
 			pygame.draw.lines(self.screen, self.colour_2, False, [(400,162),(compass_destination[0],compass_destination[1])], 1)
 		#Draws the compass interface
 		self.txt_out((self.font_3.render('COG', True, self.colour_2)),380,0)
@@ -436,43 +419,6 @@ class NAVSTAT():
 
 	def gps_xteline(self):
 		return
-
-	def calc_line(self,degree,radius,x,y):
-		'''Calculates the x,y coordinates of a point within a circle circumference based on degrees.
-		
-		Keyword arguments:
-		degree -- the degree to calculate upon
-		radius -- the radius of the circle
-		x -- the x position of the circle centre
-		y -- the y position of the circle centre
-		
-		'''
-		rad = math.radians(degree)
-		x = int(round(x + radius * math.sin(rad)))
-		y = int(round(y - radius * math.cos(rad)))
-		return [x,y]
-
-	def calc_size(self,num):
-		'''Calculates the additional x pixels required to centre a number based on number size .
-		
-		Keyword arguments:
-		num -- the number to size up
-		
-		'''
-		if num >= 0 and num < 10:
-			ext = 40
-		elif num >= 10 and num < 100:
-			ext = 34
-		elif num >= 100 and num < 1000:
-			ext = 24
-		elif num >= 1000 and num < 10000:
-			ext = 14
-		elif num >= 10000 and num < 100000:
-			ext = 0
-		else:
-			return 40
-		#Returns the additional number of pixels required
-		return ext
 
 	def aismap(self,compass_out):
 		self.screen.fill(self.colour_1)
@@ -489,114 +435,7 @@ class NAVSTAT():
 		compass_main = self.calc_line(compass_out,200,400,225)
 		pygame.draw.circle(self.screen, self.colour_2, (400,225), 200,1)
 		pygame.draw.lines(self.screen, self.colour_2, False, [(400,225),(compass_main[0],compass_main[1])], 3)
-
-	def route_start(self):
-		'''Used to keep track of current position in relation to current route - run as thread.'''
-		#Gets the next route position
-		self.route_current = self.gpx_route.route_get(0)
-		#Run while routing is enabled
-		while self.route == True:
-			#Calculates distance between current position, and destination point
-			self.waypoint_info = self.haversine(self.lat_lon[0],self.lat_lon[1],self.route_current[0],self.route_current[1])
-			#Calculates total route distance
-			self.route_distance = self.waypoint_info[0] + self.gpx_route.route_distance
-			#We're close to the destination - get the next point
-			if self.waypoint_info[0] < 0.02:
-				self.route_current = self.gpx_route.route_get(0)
-			time.sleep(1)
-
-	def arrival_start(self):
-		'''Calculates the estimated arrival time based on current speed - run as thread.'''
-		#Loops until routing is turned off
-		while self.route == True:
-			speed = round(self.nmea_connection.speed,2)
-			#Make sure we do not divide by zero
-			if speed > 0:
-				time_current = datetime.datetime.now()
-				#Determine time required for whole route
-				time_total = (self.waypoint_info[0] + self.gpx_route.route_distance) / speed
-				time_total_min, time_total_hour = math.modf(time_total)
-				time_total_min = round(time_total_min*60)
-				#Create a date/time object for ETA
-				time_total = time_current + datetime.timedelta(hours=time_total_hour, minutes=time_total_min)
-				self.route_eta = time_total.strftime("%Y-%m-%d %H:%M")
-				#Determine time required for next point in route
-				time_point = self.waypoint_info[0] / speed
-				time_point_min, time_point_hour = math.modf(time_point)
-				time_point_min = round(time_point_min*60)
-				#If time is too large to display properly
-				if time_point_hour > 1000:
-					self.waypoint_eta[0] = '1000'
-				else:
-					#Add a 0 if minutes are less then 10
-					if time_point_min < 10:
-						time_point_min = '0' + str(time_point_min)
-					#Remove decimal points
-					self.waypoint_eta[0] = int(str(time_point_hour).replace('.0',''))
-					self.waypoint_eta[1] = str(time_point_min).replace('.0','')
-				time.sleep(4)
-			#Do not estimate times if speed is 0
-			else:
-				self.route_eta = '           --'
-				self.waypoint_eta[0] = '--'
-				self.waypoint_eta[1] = '--'
-
-	def crosstrack_start(self):
-		'''Calculates the crosstrack error for the current destination - run as thread.'''
-		#Loops until routing is turned off
-		while self.route == True:
-			#Make sure this is not the first point in the route (no standard bearing)
-			if self.gpx_route.route_points[0][0] != self.route_current[0]:
-				#Gets haversine info of last route point
-				hav_start = self.haversine(self.gpx_route.route_points[self.gpx_route.route_position - 1][0], self.gpx_route.route_points[self.gpx_route.route_position - 1][1], self.lat_lon[0], self.lat_lon[1])
-				#Crosstrack calculation
-				self.waypoint_xte[0] = math.asin(math.sin(hav_start[0]/3443.92)*math.sin(hav_start[1]-self.gpx_route.route_points[self.gpx_route.route_position - 1][4]))*3443.92
-				#Negative is left of course - making positive again
-				if self.waypoint_xte[0] < 0:
-					self.waypoint_xte[0] = self.waypoint_xte[0]*(-1)
-					self.waypoint_xte[1] = 'L'
-				#Right of course
-				elif self.waypoint_xte[0] > 0:
-					self.waypoint_xte[1] ='R'
-				#Creates a crosstrack angle
-				self.crosstrack_angle()
-				#Checks for XTE alarm status
-				if self.waypoint_xte[0] >= self.xte_alarm:
-					self.xte_status == True
-				elif self.waypoint_xte[0] < self.xte_alarm:
-					self.xte_status == False
-			#No current standard bearing
-			else:
-				self.waypoint_xte[0] = '    --'
-				self.waypoint_xte[1] =''
-			time.sleep(1)
-
-	def crosstrack_angle(self):
-		'''Calculates the crosstrack angle numbers for the interface.'''
-		#Determines the positioning of the xte angle, based on xte distance
-		if self.waypoint_xte[0] < 5:
-			xte_lineadd = int(round(self.waypoint_xte[0]*10))
-		else:
-			xte_lineadd = 50
-		#Adds/subs the above to the base position
-		if self.waypoint_xte[1] == 'L':
-			self.xte_angle[0] = 675 + xte_lineadd
-		elif self.waypoint_xte[1] == 'R':
-			self.xte_angle[0] = 675 - xte_lineadd
-		#Determines how far away, in degrees, the current track is from the waypoint track
-		self.xte_angle[2] = self.gpx_route.route_points[self.gpx_route.route_position - 1][4] - self.nmea_connection.track
-		self.xte_angle[2] = round((self.xte_angle[2] + 180) % 360 - 180)
-		#Negative is left, positive is right
-		if self.xte_angle[2] < 0:
-			xte_calc = 360 + self.xte_angle[2]
-		elif self.xte_angle[2] > 0:
-			xte_calc = 0 + self.xte_angle[2]
-		else:
-			xte_calc = 0
-		xte_calc_opposite = (xte_calc + 180) % 360
-		self.xte_angle[1] = self.calc_line(xte_calc,40,self.xte_angle[0],170)
-		self.xte_angle[3] = self.calc_line(xte_calc_opposite,15,self.xte_angle[0],170)
-
+	
 	def ais_start(self):
 		while self.ais == True:
 			return
@@ -604,30 +443,6 @@ class NAVSTAT():
 	def auto_start(self):
 		while self.auto == True:
 			return
-
-	def track_start(self):
-		'''Used as a thread to save tracking info for future file output.'''
-		x = 0
-		#Loop that keeps track of time, and saves track info based on this time
-		while self.track == True:
-			self.track_route.append([self.lat_lon,self.nmea_connection.utc])
-			x = x + 1
-			if x > self.track_info[1]:
-				self.track_make()
-				#If the file hits the maximum size, start a new one
-				if self.gpx_track.track_size > self.track_maxsize and self.track == True:
-					self.gpx_track.track_close()
-					self.gpx_track.track_size = 0
-					self.gpx_track.track_start()
-				self.track_route = []
-				x = 0
-			time.sleep(self.track_info[0])
-
-	def track_make(self):
-		'''Outputs the track info to the current track file.'''
-		#Runs through each track point for output
-		for point in self.track_route:
-			self.gpx_track.track_point(point[0][0], point[0][1], 0, point[1])
 
 	def night_mode(self):
 		'''Checks whether Night Mode is enabled, and changes colour scheme to match.'''
@@ -639,39 +454,6 @@ class NAVSTAT():
 			self.colour_1 = self.colour_1_2
 			self.colour_2 = self.colour_2_2
 			self.night = False
-
-	def route_mode(self):
-		'''Checks whether Route Mode is enabled, and starts a routing, eta and crosstrack thread if so.'''
-		if self.route == False:
-			self.route = True
-			self.gpx_route = lib.gpx.GPX(self.gpx_location[1])
-			self.gpx_route.route_start('Example.gpx')
-			thread.start_new_thread(self.route_start, ())
-			thread.start_new_thread(self.arrival_start, ())
-			thread.start_new_thread(self.crosstrack_start, ())
-		else:
-			self.route = False
-
-	def track_mode(self):
-		'''Checks whether Track Mode is enabled, and starts a tracking thread if so.'''
-		if self.track == False:
-			self.track = True
-			self.gpx_track = lib.gpx.GPX(self.gpx_location[0])
-			self.gpx_track.track_start()
-			thread.start_new_thread(self.track_start, ())
-		else:
-			self.track = False
-			self.track_off()
-
-	def track_off(self):
-		'''Cleans up and closes the current track file open.'''
-		if self.gpx_track:
-			if self.track_route:
-				self.track_make()
-			#Cleans and closes track variables and files
-			self.gpx_track.track_close()
-			self.gpx_track = None
-			self.track_route = []
 
 	def mini_mode(self):
 		'''Checks whether Mini Mode is enabled, and alters screen size if so.'''
@@ -700,40 +482,6 @@ class NAVSTAT():
 		
 		'''
 		self.screen.blit(text, [x,y])
-
-	def unit_convert(self,type,num):
-		'''Converts unit output units to the units of choice.
-		
-		Keyword arguments:
-		type -- The type of unit to convert, distance = 0, speed = 1.
-		num -- The number that needs to be converted.
-		
-		'''
-		#This converts distance to choice of unit. Starts in km.
-		try:
-			if type == 0:
-				#Kilometers
-				if self.unit_measure[0] == 0:
-					return round(num*1.852,2)
-				#Miles
-				elif self.unit_measure[0] == 1:
-					return round(num*0.621371,2)
-				#Nautical Miles
-				elif self.unit_measure[0] == 2:
-					return round(num,2)
-			#This converts speed to choice of unit. Starts in knots.
-			elif type == 1:
-				#Kilometers / Hour
-				if self.unit_measure[1] == 0:
-					return round(num*1.852,2)
-				#Miles / Hour
-				elif self.unit_measure[1] == 1:
-					return round(num*1.15078,2)
-				#Nautical Miles / Hour
-				elif self.unit_measure[1] == 2:
-					return round(num,2)
-		except:
-			return num
 
 	def error_out(self,error_text, x, y):
 		'''Creates an error splash screen to output error detail.
@@ -768,10 +516,26 @@ class NAVSTAT():
 		except:
 			pass
 		#Closes any open track files
-		self.track_off()
+		self.track.off()
 		time.sleep(2)
 		pygame.quit()
 		sys.exit()
+
+class CACHE():
+
+	def __init__(self):
+		self.speed        = 0
+		self.lat_lon      = [0,0]
+		self.track        = 0
+		self.utc          = 0
+		self.status       = ''
+
+	def cache(self,lat_lon,speed,track,utc,status):
+		self.speed = speed
+		self.lat_lon = lat_lon
+		self.track = track
+		self.utc = utc
+		self.status = status
 
 #import cProfile
 
