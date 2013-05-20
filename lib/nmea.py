@@ -22,19 +22,19 @@ class NMEA0183():
 		
 		'''
 		self.exit = False
-		self.serial_dev = serial.Serial(location, baud_rate, timeout)
+		self.location = location
+		self.baud_rate = baud_rate
+		self.timeout = timeout
+		self.serial_dev = None
 		self.serial_data = None
 		self.ais_data = None
 
 		#Ready the GPS variables
-		self.lat = float(0.0)
-		self.lon = float(0.0)
-		self.speed = float(0.0)
-		self.track = float(0.0)
-		self.utc = '0.0'
+		self.data_gps = {'lat': float(0.0), 'lon': float(0.0), 'speed': float(0.0), 'track': float(0.0), 'utc': '0.0', 'status': 'A'}
 
 	def read(self):
 		'''Creates a thread to read serial connection data.'''
+		self.serial_dev = serial.Serial(self.location, self.baud_rate, self.timeout)
 		serial_thread = Thread(None,self.read_thread,None,())
 		serial_thread.start()
 
@@ -49,7 +49,8 @@ class NMEA0183():
 		try:
 			while self.is_open():
 				#Instructed to quit
-				if self.exit: break
+				if self.exit: 
+					break
 				if dat_new: 
 					dat_old = dat_new
 					dat_new = ''
@@ -60,8 +61,10 @@ class NMEA0183():
 					except:
 						pass
 					if self.checksum(self.serial_data):
+						#Incoming serial data is GPS related
 						if self.serial_data[0:3] == '$GP':
 							self.gps()
+						#Incoming serial data is AIS related
 						elif self.serial_data[0:3] == '!AI':
 							self.ais_data = telegramparser(self.serial_data)
 					dat_old = ''
@@ -122,12 +125,12 @@ class NMEA0183():
 		'''Deconstructs NMEA gps readings.'''
 		if self.serial_data[3:6] == 'RMC':
 			self.serial_data = self.serial_data.split(',')
-			self.utc = self.gps_nmea2utc()
-			self.status = self.serial_data[2]
-			self.lat = self.gps_nmea2dec(0)
-			self.lon = self.gps_nmea2dec(1)
-			self.speed = float(self.serial_data[7])
-			self.track = float(self.serial_data[8])
+			self.data_gps['utc'] = self.gps_nmea2utc()
+			self.data_gps['status'] = self.serial_data[2]
+			self.data_gps['lat'] = self.gps_nmea2dec(0)
+			self.data_gps['lon'] = self.gps_nmea2dec(1)
+			self.data_gps['speed'] = float(self.serial_data[7])
+			self.data_gps['track'] = float(self.serial_data[8])
 
 	def gps_nmea2dec(self,type):
 		'''Converts NMEA lat/long format to decimal format.
@@ -154,3 +157,27 @@ class NMEA0183():
 	def quit(self):
 		'''Enables quiting the serial connection.'''
 		self.exit = True
+
+class CACHE():
+
+	def __init__(self):
+		self.gps = {'lat': 0, 'lon': 0, 'speed': 0, 'track': 0, 'utc': 0, 'status': ''}
+
+	def cache_gps(self,lat,lon,speed,track,utc,status):
+		'''Used to store a common gps data sequence for future access.
+		
+		Keyword arguments:
+		lat - the current latitude
+		lon - the current longitude
+		speed - the current speed
+		track - the current track
+		utc - the current utc
+		status - the current gps status
+		
+		'''
+		self.gps['lat'] = lat
+		self.gps['lon'] = lon
+		self.gps['speed'] = speed
+		self.gps['track'] = track
+		self.gps['utc'] = utc
+		self.gps['status'] = status
