@@ -1,5 +1,48 @@
 import math
 
+
+class UNIT():
+
+	def __init__(self):
+		#Unit measurement selected. Distance, speed.
+		self.measure        = [0,0]
+		#Text version of unit selected
+		self.text           = ['','']
+
+	def convert(self,type,num):
+		'''Converts unit output units to the units of choice.
+		
+		Keyword arguments:
+		type -- The type of unit to convert, distance = 0, speed = 1.
+		num -- The number that needs to be converted.
+		
+		'''
+		#This converts distance to choice of unit. Starts in km.
+		try:
+			if type == 0:
+				#Kilometers
+				if self.measure[0] == 0:
+					return round(num*1.852,2)
+				#Miles
+				elif self.measure[0] == 1:
+					return round(num*0.621371,2)
+				#Nautical Miles
+				elif self.measure[0] == 2:
+					return round(num,2)
+			#This converts speed to choice of unit. Starts in knots.
+			elif type == 1:
+				#Kilometers / Hour
+				if self.measure[1] == 0:
+					return round(num*1.852,2)
+				#Miles / Hour
+				elif self.measure[1] == 1:
+					return round(num*1.15078,2)
+				#Nautical Miles / Hour
+				elif self.measure[1] == 2:
+					return round(num,2)
+		except:
+			return num
+
 def haversine(lat_1,lon_1,lat_2,lon_2):
 	'''Calculates the distance between two coordinates.
 	
@@ -41,40 +84,6 @@ def calc_line(degree,radius,x,y):
 	x = int(round(x + radius * math.sin(rad)))
 	y = int(round(y - radius * math.cos(rad)))
 	return [x,y]
-
-def unit_convert(unit,type,num):
-	'''Converts unit output units to the units of choice.
-	
-	Keyword arguments:
-	type -- The type of unit to convert, distance = 0, speed = 1.
-	num -- The number that needs to be converted.
-	
-	'''
-	#This converts distance to choice of unit. Starts in km.
-	try:
-		if type == 0:
-			#Kilometers
-			if unit[0] == 0:
-				return round(num*1.852,2)
-			#Miles
-			elif unit[0] == 1:
-				return round(num*0.621371,2)
-			#Nautical Miles
-			elif unit[0] == 2:
-				return round(num,2)
-		#This converts speed to choice of unit. Starts in knots.
-		elif type == 1:
-			#Kilometers / Hour
-			if unit[1] == 0:
-				return round(num*1.852,2)
-			#Miles / Hour
-			elif unit[1] == 1:
-				return round(num*1.15078,2)
-			#Nautical Miles / Hour
-			elif unit[1] == 2:
-				return round(num,2)
-	except:
-		return num
 
 def calc_size(num):
 	'''Calculates the additional x pixels required to centre a number based on number size .
