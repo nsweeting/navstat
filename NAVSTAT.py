@@ -46,6 +46,7 @@ class NAVSTAT():
 		self.connect()
 		#Throws splash on screen
 		self.gui.splash()
+		self.gps.track.distance_start()
 		#Main program loop - continue until quit
 		while self.exit == False:
 			#Checks if buttons have been pressed
@@ -70,8 +71,10 @@ class NAVSTAT():
 				self.cache.cache_gps(self.nmea_connection.data_gps['lat'], self.nmea_connection.data_gps['lon'], self.nmea_connection.data_gps['speed'], self.nmea_connection.data_gps['track'], self.nmea_connection.data_gps['utc'], self.nmea_connection.data_gps['status'])
 				self.map_interface()
 			elif self.navstat_mode == 2:
-				self.aismap(self.nmea_connection.track)
+				self.cache.cache_gps(self.nmea.data_gps['lat'], self.nmea.data_gps['lon'], self.nmea.data_gps['speed'], self.nmea.data_gps['track'], self.nmea.data_gps['utc'], self.nmea.data_gps['status'])
 			elif self.navstat_mode == 3:
+				self.aismap(self.nmea_connection.track)
+			elif self.navstat_mode == 4:
 				self.eng_interface()
 				self.eng_tachometer()
 			self.gui.clock.tick(self.gui.frame_rate)
@@ -162,6 +165,7 @@ class NAVSTAT():
 				#Attempts to make a serial connection
 				self.nmea.read()
 				connection = True
+				failed = False
 				#Waits until a proper data stream is available
 				while self.nmea.data_gps['lat'] == 0 and self.nmea.data_gps['lon'] == 0:
 					pass
@@ -216,8 +220,19 @@ class NAVSTAT():
 	def error(self):
 		if self.navstat_mode == 0:
 			self.gui.txt_out((self.gui.font_2.render('There is currently no GPS connected.', True, self.gui.colour_2)),323,472)
+			#Turns off track and route threads
+			if self.gps.track.mode == True:
+				self.gps.track.switch()
+			if self.gps.route.mode == True:
+				self.gps.route.switch()
+			#Clears the current cache
+			self.cache.gps = {'lat': 0, 'lon': 0, 'speed': 0, 'track': 0, 'utc': 0, 'status': ''}
+			#Reload settings
 			self.settings()
-			self.connect()	
+			#Attempt to reconect to serial data
+			self.connect()
+			time.sleep(1)
+
 
 	##############################################################
 	##### ENG RELATED ############################################

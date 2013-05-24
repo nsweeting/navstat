@@ -42,9 +42,6 @@ class GPS():
 		if self.route.mode == True:
 			self.gui.txt_out(self.gui.font_1.render('Route - ' + self.route.gpx_route.gpx_file, True, self.gui.colour_2),560,477)
 
-	def distance():
-		return 
-
 	def latlong(self):
 		'''Positions and draws the lat/long interface.
 		
@@ -368,6 +365,8 @@ class TRACK():
 		#The max size of a track file
 		self.maxsize             = None
 		self.gpx_track           = None
+		self.distance_total      = 0
+		self.distance_track      = True
 		self.cache               = cache
 
 	def switch(self):
@@ -415,6 +414,21 @@ class TRACK():
 		for point in self.route:
 			self.gpx_track.track_point(point[0], point[1], 0, point[2])
 
+	def distance(self):
+		x = 0
+		while self.distance_track == True:
+			if x != 0:
+				current_distance = geomath.haversine(self.cache.gps['lat'], self.cache.gps['lon'], last_point[0], last_point[1])
+				print current_distance[0]
+				self.distance_total = self.distance_total + current_distance[0]
+				print self.distance_total
+			last_point = [self.cache.gps['lat'], self.cache.gps['lon']]
+			print last_point
+			x = x + 1
+			time.sleep(2)
+
+	def distance_start(self):
+		thread.start_new_thread(self.distance, ())
 
 class ALARM():
 
