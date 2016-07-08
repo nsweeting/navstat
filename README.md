@@ -1,8 +1,6 @@
 NAVSTAT
 =======
 
-ABOUT
------
 NAVSTAT is being constructed as a simple yet effective navigation station for marine applications.
 It is important to realize that it is not being made to replace a full chartplotter, but rather 
 provides a set of tools that will enable easy access and visualization of important navigational 
